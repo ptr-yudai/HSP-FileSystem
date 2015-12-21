@@ -1,0 +1,168 @@
+// TODO
+// - 変数名が酷いので短いものに修正する
+// - MFTを掘り下げる
+
+/*--------------------------------------------------
+	NTFSブートセクタ構造体
+--------------------------------------------------*/
+#module st_NTFSBootSector jmp, oem, bps, spc, reserved_sectors,\
+                          media_descriptor, spt, number_of_heads, hidden_sectors,\
+                          total_sectors, MFT_cluster_number, MFTMirr_cluster_number, bpfrs, cpib,\
+                          volume_serial_number, checksum, bootstrap_code, eos_marker
+	// 構造体にコピー
+	#modfunc st_NTFSBootSector_SET var buf
+		dim jmp, 1 : memcpy jmp, buf, 3, 0, 0
+		dim oem, 2 : memcpy oem, buf, 8, 0, 3
+		wpoke bps, 0, wpeek(buf, 0x0B)
+		poke spc, 0, peek(buf, 0x0D)
+		wpoke reserved_sectors, 0, wpeek(buf, 0x0E)
+		// unused
+		poke media_descriptor, 0, peek(buf, 0x15)
+		// unused
+		wpoke spt, 0, wpeek(buf, 0x18)
+		wpoke number_of_heads, 0, wpeek(buf, 0x1A)
+		lpoke hidden_sectors, 0, lpeek(buf, 0x1C)
+		// unused
+		dim total_sectors, 2 : memcpy total_sectors, buf, 8, 0, 0x28
+		dim MFT_cluster_number, 2 : memcpy MFT_cluster_number, buf, 8, 0, 0x30
+		dim MFTMirr_cluster_number, 2 : memcpy MFTMirr_cluster_number, buf, 8, 0, 0x38
+		poke bpfrs, 0, peek(buf, 0x40)
+		// unused(?)
+		poke cpib, 0, peek(buf, 0x44)
+		// unused
+		dim volume_serial_number, 2 : memcpy volume_serial_number, buf, 8, 0, 0x48
+		lpoke checksum, 0, lpeek(buf, 0x50)
+		sdim bootstrap_code, 426 : memcpy bootstrap_code, buf, 426, 0, 0x54
+		wpoke eos_marker, 0, wpeek(buf, 0x01FE)
+	return
+	// 構造体から取得
+	#modcfunc st_NTFSBootSector_GET str vname
+		ret = 0
+		switch(getpath(vname, 16))
+			case "jmp" : memcpy ret, jmp, 3, 0, 0 : swbreak
+			case "oem" : ret = varptr(oem) : swbreak										; 8b
+			case "bps" : wpoke ret, 0, bps : swbreak
+			case "spc" : poke ret, 0, spc : swbreak
+			case "reserved_sectors" : wpoke ret, 0, reserved_sectors : swbreak
+			case "media_descriptor" : poke ret, 0, media_descriptor : swbreak
+			case "spt" : wpoke buf, 0, spt : swbreak
+			case "number_of_heads" : wpoke buf, 0, number_of_heads : swbreak
+			case "hidden_sectors" : lpoke buf, 0, hidden_sectors : swbreak
+			case "total_sectors" : ret = varptr(total_sectors) : swbreak					; 8b
+			case "mft_cluster_number" : ret = varptr(MFT_cluster_number) : swbreak			; 8b
+			case "mftmirr_cluster_number" : ret = varptr(MFTMirr_cluster_number) : swbreak	; 8b
+			case "bpfrs" : poke ret, 0, bpfrs : swbreak
+			case "cpib" : poke ret, 0, cpib : swbreak
+			case "volume_serial_number" : ret = varptr(volume_serial_number) : swbreak		; 8b
+			case "checksum" : lpoke ret, 0, checksum : swbreak
+			case "bootstrap_code" : ret = varptr(bootstrap_code) : swbreak					; 426b
+			case "eos_marker" : wpoke ret, 0, eos_marker : swbreak
+		swend
+	return ret
+#global
+
+/*--------------------------------------------------
+	MFTレコード構造体
+--------------------------------------------------*/
+#module st_MFTRecord magic_number, offset_to_fixup_array, number_of_entries_in_fixup_array, LogFile_sequence_number,\
+	                 sequence_number, hard_link_count, offset_to_first_attribute, flags, used_size_of_MFT_entry,\
+	                 allocated_size_of_mft_entry, file_reference_to_base_record, next_addtibute_id, align_to_4b_boundary,\
+	                 number_of_this_MFT_record, attributes_and_fixup_value
+	#modfunc st_MFTRecord_SET var buf
+		lpoke magic_number, 0, lpeek(buf, 0)
+		wpoke offset_to_fixup_array, 0, wpeek(buf, 4)
+		wpoke number_of_entries_in_fixup_array, 0, wpeek(buf, 6)
+		dim LogFile_sequence_number, 2 : memcpy LogFile_sequence_number, buf, 8, 0, 8
+		wpoke sequence_number, 0, wpeek(buf, 0x10)
+		wpoke hard_link_count, 0, wpeek(buf, 0x12)
+		wpoke offset_to_first_attribute, 0, wpeek(buf, 0x14)
+		wpoke flags, 0, wpeek(buf, 0x16)
+		lpoke used_size_of_MFT_entry, 0, lpeek(buf, 0x18)
+		lpoke allocated_size_of_mft_entry, 0, lpeek(buf, 0x1c)
+		dim file_reference_to_base_record, 2 : memcpy file_reference_to_base_record, buf, 8, 0, 0x20
+		wpoke next_addtibute_id, 0, wpeek(buf, 0x28)
+		wpoke align_to_4b_boundary, 0, wpeek(buf, 0x2a)
+		lpoke number_of_this_MFT_record, 0, lpeek(buf, 0x2c)
+		sdim attributes_and_fixup_value, 4048
+		memcpy attributes_and_fixup_value, buf, 4048, 0, 0x30
+	return
+	#modcfunc st_MFTRecord_GET str vname
+		ret = 0
+		switch(getpath(vname, 16))
+			case "magic_number" : lpoke ret, 0, magic_number : swbreak
+			case "offset_to_fixup_array" : wpoke ret, 0, offset_to_fixup_array : swbreak
+			case "number_of_entries_in_fixup_array" : wpoke ret, 0, number_of_entries_in_fixup_array : swbreak
+			case "logfile_sequence_number" : ret = varptr(LogFile_sequence_number) : swbreak
+			case "sequence_number" : wpoke ret, 0, sequence_number : swbreak
+			case "hard_link_count" : wpoke ret, 0, hard_link_count : swbreak
+			case "offset_to_first_attribute" : wpoke ret, 0, offset_to_first_attribute : swbreak
+			case "flags" : wpoke ret, 0, flags : swbreak
+			case "used_size_of_mft_entry" : lpoke ret, 0, used_size_of_MFT_entry : swbreak
+			case "allocated_size_of_mft_entry" : lpoke ret, 0, allocated_size_of_mft_entry : swbreak
+			case "file_reference_to_base_record" : ret = varptr(file_reference_to_base_record) : swbreak
+			case "next_addtibute_id" : wpoke ret, 0, next_addtibute_id : swbreak
+			case "align_to_4b_boundary" : wpoke ret, 0, align_to_4b_boundary : swbreak
+			case "attributes_and_fixup_value" : ret = varptr(attributes_and_fixup_value) : swbreak
+		swend
+	return ret
+#global
+
+/*--------------------------------------------------
+	NTFS解析モジュール
+--------------------------------------------------*/
+#module "NTFS_Parser"
+	#uselib "kernel32.dll"
+		#func JumpTo "SetFilePointer" int, sptr, int, int
+	// ReadFile
+	#const FILE_BEGIN 0
+	#const FILE_CURRENT 1
+	// misc
+	#const INVALID_HANDLE_VALUE -1
+	#const NULL 0
+	
+	/*--------------------------------------------------
+	// GetMFTRecord : MFTレコード情報を取得
+	//    p1 : デバイスのハンドル
+	//    p2 : 格納先の変数
+	//    p3 : MFT Cluster Numberを保持するポインタ
+	--------------------------------------------------*/
+	#deffunc GetMFTRecord int _hDevice, var stMFT, int p_mft_cluster_number
+		// ポインタはNTFS Boot Sectorで保持
+		// MFTへのクラスタを取得
+		addr_u = 0 : addr_l = 0
+		dupptr addr_l, p_mft_cluster_number, 4, 4
+		dupptr addr_u, p_mft_cluster_number + 4, 4, 4
+		// ポインタを設定
+		repeat GetClusterSize() * GetSectorSize()
+			JumpTo _hDevice, addr_l, addr_u, FILE_CURRENT
+		loop
+		// 読み込み
+		sdim MFT, 0x1000
+		if ( ReadDevice(_hDevice, MFT, 0x1000 / GetSectorSize(), 0) == -1 ) : return -1
+		// データを構造体とする
+		newmod stMFT, st_MFTRecord
+		st_MFTRecord_SET stMFT, MFT
+		//
+	return 0
+	
+	/*--------------------------------------------------
+	// GetNTFSBootSector : NTFSブートセクタ情報を取得
+	//    p1 : デバイスのハンドル
+	//    p2 : 格納先の変数
+	//    p3 : NTFS Boot Sectorへの絶対アドレス
+	--------------------------------------------------*/
+	#deffunc GetNTFSBootSector int _hDevice, var stNBS, int relative_sectors
+		// ポインタを0にセット
+		JumpTo _hDevice, 0, NULL, FILE_BEGIN
+		// ブートセクタから0x200バイト取得
+		sdim NBS, 0x200
+		if ( ReadDevice(_hDevice, NBS, 0x200 / GetSectorSize(), relative_sectors) == -1 ) : return -1
+		// データを構造体とする
+		newmod stNBS, st_NTFSBootSector
+		st_NTFSBootSector_SET stNBS, NBS
+		// セクタサイズとクラスタサイズを設定
+		UpdateSectorSize st_NTFSBootSector_GET(stNBS, "bps")
+		UpdateClusterSize st_NTFSBootSector_GET(stNBS, "spc")
+		// ポインタはNTFSで保持
+	return 0
+#global

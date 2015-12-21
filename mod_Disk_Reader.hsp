@@ -1,0 +1,131 @@
+// TODO
+// - 変数名が酷いので短いものに修正する
+
+/*--------------------------------------------------
+	MBR構造体
+--------------------------------------------------*/
+// パーティションテーブル
+#module st_PartitionTable boot_indicator, starting_head, starting_info, system_id, ending_head, ending_info, relative_sectors, total_sectors
+	// 構造体にコピー
+	#modfunc st_PartitionTable_SET var buf
+		poke boot_indicator, 0, peek(buf, 0)
+		poke starting_head, 0, peek(buf, 1)
+		wpoke starting_info, 0, wpeek(buf, 2)
+		poke system_id, 0, peek(buf, 4)
+		poke ending_head, 0, peek(buf, 5)
+		wpoke ending_info, 0, wpeek(buf, 6)
+		lpoke relative_sectors, 0, lpeek(buf, 8)
+		lpoke total_sectors, 0, lpeek(buf, 12)
+	return
+	// 構造体から取得
+	#modcfunc st_PartitionTable_GET str vname
+		ret = 0
+		switch(getpath(vname, 16))
+			case "boot_indicator" : poke ret, 0, boot_indicator : swbreak
+			case "starting_head" : poke ret, 0, starting_head  : swbreak
+			case "starting_info" : wpoke ret, 0, starting_info : swbreak
+			case "system_id" : poke ret, 0, system_id : swbreak
+			case "ending_head" : poke ret, 0, ending_head : swbreak
+			case "ending_info" : wpoke ret, 0, ending_info : swbreak
+			case "relative_sectors" : lpoke ret, 0, relative_sectors : swbreak
+			case "total_sectors" : lpoke ret, 0, total_sectors : swbreak
+		swend
+	return ret
+#global
+/*--------------------------------------------------
+	MBR解析およびダイレクトディスクアクセス
+--------------------------------------------------*/
+#module "Disk_Reader"
+	#uselib "kernel32.dll"
+		#cfunc CreateFile "CreateFileA" int, int, int, int, int, int, int
+		#func JumpTo "SetFilePointer" int, sptr, int, int
+		#cfunc ReadFile "ReadFile" int, int, int, int, int
+	// CreateFile
+	#const GENERIC_READ 0x80000000
+	#const FILE_SHARE_READ 1
+	#const OPEN_EXISTING 3
+	// ReadFile
+	#const FILE_BEGIN 0
+	#const FILE_CURRENT 1
+	// misc
+	#const INVALID_HANDLE_VALUE -1
+	#const NULL 0
+	/*--------------------------------------------------
+	// GetPartitionTable : パーティションテーブル情報を取得
+	//    p1 : デバイスのハンドル
+	//    p2 : 格納先の変数
+	//    p3 : n番目のファイルシステムを調べる
+	--------------------------------------------------*/
+	#deffunc GetPartitionTable int _hDevice, var stPT, int n
+		// n < 4 まで
+		if ( n < 0 || n > 3 ) : return -1
+		// ポインタを0にセット
+		JumpTo _hDevice, 0, NULL, FILE_BEGIN
+		// 0バイト目から1セクタだけバイナリ取得
+		sdim tmp_buf, GetSectorSize()
+		if ( ReadDevice(_hDevice, tmp_buf, 1, 0) == -1 ) : return -1
+		// データを構造体とする
+		sdim PT, 16
+		memcpy PT, tmp_buf, 16, 0, 0x01BE + 16*n
+		newmod stPT, st_PartitionTable
+		st_PartitionTable_SET stPT, PT
+		// ポインタを元に戻す
+		JumpTo _hDevice, 0, NULL, FILE_BEGIN
+	return 0
+	
+	/*--------------------------------------------------
+	// OpenDevice : デバイスをドライブ名から開く
+	//    p1 : ドライブ名(PHYSICALDRIVE0)
+	--------------------------------------------------*/
+	#defcfunc OpenDevice str _drivename
+		_devicename = "\\\\.\\" + _drivename
+		hDevice = 0
+		hDevice = CreateFile(varptr(_devicename), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL)
+		UpdateSectorSize 512
+	return hDevice
+	
+	/*--------------------------------------------------
+	// ReadDevice : ディスク上のデータを読む(相対)
+	//    p1 : デバイスのハンドル
+	//    p2 : 読み込み先のバッファ
+	//    p3 : 読み込むセクタ数
+	//    p4 : 開始するセクタ数
+	--------------------------------------------------*/
+	#defcfunc ReadDevice int _hDevice, var buf, int numberSector, int beginSector
+		readByte = 0
+		sdim buf, numberSector * GetSectorSize()
+		// ポインタを設定する
+		repeat GetSectorSize()
+			JumpTo _hDevice, beginSector, NULL, FILE_CURRENT
+		loop
+		// バイナリを読み込む
+		if ( ReadFile(_hDevice, varptr(buf), numberSector * GetSectorSize(), varptr(readByte), NULL) == 0 ) : return -1
+		// 1セクタ戻す
+		JumpTo _hDevice, -GetSectorSize(), NULL, FILE_CURRENT
+	return 0
+	
+	/*--------------------------------------------------
+	// サイズ更新と取得
+	--------------------------------------------------*/
+	#deffunc UpdateSectorSize int n
+		__sector_size__ = n
+	return
+	#deffunc UpdateClusterSize int n
+		__cluster_size__ = n
+	return
+	#defcfunc GetSectorSize
+	return __sector_size__ 
+	#defcfunc GetClusterSize
+	return __cluster_size__
+	
+	/*--------------------------------------------------
+	// FatalOutput : エラーを書き込む
+	--------------------------------------------------*/
+	#deffunc FatalOutput str msg
+		mes " [ERROR] " + msg + "\n"
+		mes "Press [Ctrl]+[C] to exit..."
+		repeat
+			wait 1024
+		loop
+	return
+#global
