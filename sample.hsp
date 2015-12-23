@@ -5,11 +5,6 @@
 #include "mod_Disk_Reader.hsp"
 #include "mod_NTFS_Parser.hsp"
 
-	#uselib "kernel32.dll"
-		#func JumpTo "SetFilePointer" int, sptr, int, int
-		#cfunc ReadFile "ReadFile" int, int, int, int, int
-		#cfunc GetLastError "GetLastError"
-		
 /*--------------------------------------------------
 	変数初期化
 --------------------------------------------------*/
@@ -19,14 +14,14 @@
 	sdim stNTFSBootSector		; NTFSブートセクタ構造体
 	sdim stMFTRecord			; MFTレコード構造体
 	sdim stAttribute			; アトリビュート構造体
+	sdim stDataRuns				; Runlists構造体
 	
-/*--------------------------------------------------
-	パーティションテーブル読み込み
---------------------------------------------------*/
 	// デバイスを開く
 	hDevice = OpenDevice("PHYSICALDRIVE0")
 	if ( hDevice == -1 ) : FatalOutput "デバイスのオープンに失敗しました。"
-	
+/*--------------------------------------------------
+	パーティションテーブル読み込み
+--------------------------------------------------*/
 	// パーティションテーブルを取得
 	repeat 4
 		// 情報を取得
@@ -44,29 +39,38 @@
 	// NTFSブートセクタ
 	GetNTFSBootSector hDevice, stNTFSBootSector, st_PartitionTable_GET(stPartitionTable, "relative_sectors")
 	if ( stat == -1 ) : FatalOutput "NTFSブートセクタの読み込みに失敗しました。"
-	
+	// OEM IDが"NTFS    "でない
 	dupptr oemID, st_NTFSBootSector_GET(stNTFSBootSector, "oemID"), 8, vartype("str")
 	if ( oemID != "NTFS    " ) : FatalOutput "ファイルシステムがNTFSではありません。"
+	mes strf("NTFSBootSector.oemID => %s", oemID)
+/*--------------------------------------------------
+	ファイルレコード読み込み
+--------------------------------------------------*/
 	// MFTレコード
 	GetMFTRecord hDevice, stMFTRecord, st_NTFSBootSector_GET(stNTFSBootSector, "mftcluster")
 	if ( stat == -1 ) : FatalOutput "MFTレコードの読み込みに失敗しました。"
-	
 	// シグネチャが"FILE"でない
 	;if ( st_MFTRecord_GET(stMFTRecord, "magic_number") != 0x454c4946 ) {
 	;	FatalOutput "MFTデータが正しく読み込めていないか、破損しています。"
 	;}
+	// ファイルレコードのフラグを表示
+	mes strf("MFTRecord.flag => %d", st_MFTRecord_GET(stMFTRecord, "flag"))
 	
+/*--------------------------------------------------
+	アトリビュートの検索
+--------------------------------------------------*/
 	// 特定の属性をMFT内から取得
-	findTypeID = 0x80	; 検索する属性
-	FindAttribute stAttribute, stMFTRecord, findTypeID
-	if ( stat == -1 ) {
-		mes strf("属性0x%xは見つかりませんでした。", findTypeID)
-		stop
-	} else:if ( stat == 0 ) {
-		
-	} else:if ( stat == 1 ) {
-		
+	FindAttribute stAttribute, stMFTRecord, NTFS_DATA
+	if ( stat == 1 ) {
+		ParseDataRuns stDataRuns, stAttribute
+		if ( stat == -1 ) : FatalOutput "$DATAアトリビュートのData Runsが壊れています。"
+	} else {
+		FatalOutput "先頭の$MFTに$DATAアトリビュートが存在しません。"
 	}
+	// 表示
+	mes "Runlists :"
+	repeat st_DataRuns_GET(stDataRuns, "count")
+		mes strf("\t0x%x\t\t0x%x", st_DataRuns_GET(stDataRuns(cnt), "offset"), st_DataRuns_GET(stDataRuns(cnt), "len"))
+	loop
 	
-	mes oemID
 stop

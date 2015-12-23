@@ -1,6 +1,29 @@
 // TODO
-// - 変数名が酷いので短いものに修正する
 // - MFTを掘り下げる
+
+// MFT Record File Flag
+#const global NTFS_FILE_NOT_IN_USE		0
+#const global NTFS_FILE_IN_USE			1
+#const global NTFS_DIRECTORY_NOT_IN_USE	2
+#const global NTFS_DIRECTORY_IN_USE		3
+// MFT Attribute Types
+#const global NTFS_STANDARD_INFORMATION	0x10
+#const global NTFS_ATTRIBUTE_LIST		0x20
+#const global NTFS_FILE_NAME			0x30
+#const global NTFS_VOLUME_VERSION		0x40
+#const global NTFS_OBJECT_ID			0x40
+#const global NTFS_SECURITY_DESCRIPTOR	0x50
+#const global NTFS_VOLUME_NAME			0x60
+#const global NTFS_VOLUME_INFORMATION	0x70
+#const global NTFS_DATA					0x80
+#const global NTFS_INDEX_ROOT			0x90
+#const global NTFS_INDEX_ALLOCATION		0xA0
+#const global NTFS_BITMAP				0xB0
+#const global NTFS_SYMBOLIC_LINK		0xC0
+#const global NTFS_REPARSE_POINT		0xC0
+#const global NTFS_EA_INFORMATION		0xD0
+#const global NTFS_EA					0xE0
+#const global NTFS_LOGGED_UTILITY_STREAM	0x100
 
 /*--------------------------------------------------
 	NTFSブートセクタ構造体
@@ -124,6 +147,8 @@
 		dim contentDiskSize, 2 : memcpy contentDiskSize, buf, 8, 0, 0x28
 		dim contentSize, 2 : memcpy contentSize, buf, 8, 0, 0x30
 		dim initialContentSize, 2 : memcpy initialContentSize, buf, 8, 0, 0x38
+		// アトリビュート全体も保存する
+		sdim Attribute, len : memcpy Attribute, buf, len, 0, 0
 	return 1
 	#modcfunc st_AttributeNR_GET str vname
 		ret = 0
@@ -142,6 +167,7 @@
 			case "contentdisksize" : ret = varptr(contentDiskSize) : swbreak
 			case "contentsize" : ret = varptr(contentSize) : swbreak
 			case "initialcontentsize" : ret = varptr(initialContentSize) : swbreak
+			case "attribute" : ret = varptr(Attribute) : swbreak
 		swend
 	return ret
 #global
@@ -195,6 +221,28 @@
 #global
 
 /*--------------------------------------------------
+	Data Runs構造体
+--------------------------------------------------*/
+#module st_DataRuns offset, len
+	#modinit var o, var l
+		index++
+		dim offset, 4 : memcpy offset, o, 16, 0, 0
+		dim len, 4 : memcpy len, l, 16, 0, 0
+	return
+	#modterm
+		index--
+	return
+	#modcfunc st_DataRuns_GET str vname
+		ret = 0
+		switch getpath(vname, 16)
+			case "offset" : ret = varptr(offset) : swbreak
+			case "len" : ret = varptr(len) : swbreak
+			case "count" : ret = index : swbreak
+		swend
+	return ret
+#global
+
+/*--------------------------------------------------
 	NTFS解析モジュール
 --------------------------------------------------*/
 #module "NTFS_Parser"
@@ -208,6 +256,48 @@
 	// misc
 	#const INVALID_HANDLE_VALUE -1
 	#const NULL 0
+	
+	/*--------------------------------------------------
+	// ParseDataRuns : データリストを解析する
+	//    p1 : Data Runs構造体を格納する変数
+	//    p3 : $DATAを持つアトリビュート構造体
+	//
+	//    DataRuns
+	//        NAME    SIZE  CONTENTS
+	//        Header  1     0xXY => Y byte length, X byte offset
+	//        Length  Y     Length(read left to right)
+	//        Offset  X     Offset(read right to left)
+	--------------------------------------------------*/
+	#deffunc ParseDataRuns var stDR, var stAttr
+		// non-residentであり、$DATAであるか
+		if ( st_AttributeR_GET(stAttr, "formCode") == 0 || st_AttributeNR_GET(stAttr, "typeID") != NTFS_DATA ) : return -1
+		// 初期化
+		tmp_int = 0
+		lenLength = 0 : lenOffset = 0
+		drSize = st_AttributeNR_GET(stAttr, "len") - st_AttributeNR_GET(stAttr, "runlistoffset")
+		gotByte = 0		; すでに調査したバイト数
+		repeat
+			if ( drSize <= 0 ) : return -1	; broken
+			// 初期化
+			dim len, 4 : dim offset, 4
+			sdim DataRuns, drSize
+			// Runlistsを取得
+			dupptr DataRuns, st_AttributeNR_GET(stAttr, "Attribute") + st_AttributeNR_GET(stAttr, "runlistoffset") + gotByte, drSize, 2 
+			// lengthを取得
+			poke lenLength, 0, peek(DataRuns, 0) & 0xF	; lengthのlength
+			repeat lenLength : len |= peek(DataRuns, 1+cnt) << (cnt*8) : loop
+			// offsetを取得
+			poke lenOffset, 0, peek(DataRuns, 0) >> 4	; offsetのlength
+			repeat lenOffset : offset |= peek(DataRuns, 1+lenLength+cnt) << (cnt*8) : loop
+			// Data Runs構造体とする
+			newmod stDR, st_DataRuns, offset, len
+			// 次のData Runへ
+			gotByte += 1 + lenLength + lenOffset
+			drSize -= gotByte
+			// 終了チェック
+			if ( peek(DataRuns, 1+lenLength+lenOffset) == 0x00 ) : break
+		loop
+	return 0
 	
 	/*--------------------------------------------------
 	// FindAttribute : アトリビュート情報を取得
@@ -240,7 +330,7 @@
 			}
 			// アトリビュートが存在しない
 			if ( typeID == 0xffffffff ) : break
-			if ( typeID == chk_typeID ) : return nr
+			if ( typeID == chk_typeID ) : bsave "attr", attrr : return nr
 			// 次のアトリビュートへ
 			nextAttrOffset += len
 			delmod stAttr
