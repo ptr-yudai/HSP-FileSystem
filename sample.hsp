@@ -5,6 +5,11 @@
 #include "mod_Disk_Reader.hsp"
 #include "mod_NTFS_Parser.hsp"
 
+	#uselib "kernel32.dll"
+		#func JumpTo "SetFilePointer" int, sptr, int, int
+		#cfunc ReadFile "ReadFile" int, int, int, int, int
+		#cfunc GetLastError "GetLastError"
+		
 /*--------------------------------------------------
 	変数初期化
 --------------------------------------------------*/
@@ -13,6 +18,7 @@
 	sdim stPartitionTable		; パーティションテーブル構造体
 	sdim stNTFSBootSector		; NTFSブートセクタ構造体
 	sdim stMFTRecord			; MFTレコード構造体
+	sdim stAttribute			; アトリビュート構造体
 	
 /*--------------------------------------------------
 	パーティションテーブル読み込み
@@ -39,16 +45,27 @@
 	GetNTFSBootSector hDevice, stNTFSBootSector, st_PartitionTable_GET(stPartitionTable, "relative_sectors")
 	if ( stat == -1 ) : FatalOutput "NTFSブートセクタの読み込みに失敗しました。"
 	
-	dupptr oemID, st_NTFSBootSector_GET(stNTFSBootSector, "oem"), 8, vartype("str")
+	dupptr oemID, st_NTFSBootSector_GET(stNTFSBootSector, "oemID"), 8, vartype("str")
 	if ( oemID != "NTFS    " ) : FatalOutput "ファイルシステムがNTFSではありません。"
-	
 	// MFTレコード
-	GetMFTRecord hDevice, stMFTRecord, st_NTFSBootSector_GET(stNTFSBootSector, "mft_cluster_number")
+	GetMFTRecord hDevice, stMFTRecord, st_NTFSBootSector_GET(stNTFSBootSector, "mftcluster")
 	if ( stat == -1 ) : FatalOutput "MFTレコードの読み込みに失敗しました。"
 	
 	// シグネチャが"FILE"でない
-	if ( st_MFTRecord_GET(stMFTRecord, "magic_number") != 0x454c4946 ) {
-		FatalOutput "MFTデータが正しく読み込めていないか、破損しています。"
+	;if ( st_MFTRecord_GET(stMFTRecord, "magic_number") != 0x454c4946 ) {
+	;	FatalOutput "MFTデータが正しく読み込めていないか、破損しています。"
+	;}
+	
+	// 特定の属性をMFT内から取得
+	findTypeID = 0x80	; 検索する属性
+	FindAttribute stAttribute, stMFTRecord, findTypeID
+	if ( stat == -1 ) {
+		mes strf("属性0x%xは見つかりませんでした。", findTypeID)
+		stop
+	} else:if ( stat == 0 ) {
+		
+	} else:if ( stat == 1 ) {
+		
 	}
 	
 	mes oemID

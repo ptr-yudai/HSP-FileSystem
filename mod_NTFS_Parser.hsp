@@ -5,58 +5,58 @@
 /*--------------------------------------------------
 	NTFSブートセクタ構造体
 --------------------------------------------------*/
-#module st_NTFSBootSector jmp, oem, bps, spc, reserved_sectors,\
-                          media_descriptor, spt, number_of_heads, hidden_sectors,\
-                          total_sectors, MFT_cluster_number, MFTMirr_cluster_number, bpfrs, cpib,\
-                          volume_serial_number, checksum, bootstrap_code, eos_marker
+#module st_NTFSBootSector jump, oemID, bytePerSector, sectorPerCluster, reserved,\
+                          mediaDescriptor, sectorPerTrack, headNumber, hiddenSector,\
+                          totalSector, MFTCluster, MFTMirrCluster, clusterPerRecord, clusterPerBlock,\
+                          serialNumber, checkSum, bootCode, endMarker
 	// 構造体にコピー
 	#modfunc st_NTFSBootSector_SET var buf
-		dim jmp, 1 : memcpy jmp, buf, 3, 0, 0
-		dim oem, 2 : memcpy oem, buf, 8, 0, 3
-		wpoke bps, 0, wpeek(buf, 0x0B)
-		poke spc, 0, peek(buf, 0x0D)
-		wpoke reserved_sectors, 0, wpeek(buf, 0x0E)
+		dim jump, 1 : memcpy jump, buf, 3, 0, 0
+		dim oemID, 2 : memcpy oemID, buf, 8, 0, 3
+		wpoke bytePerSector, 0, wpeek(buf, 0x0B)
+		poke sectorPerCluster, 0, peek(buf, 0x0D)
+		wpoke reserved, 0, wpeek(buf, 0x0E)
 		// unused
-		poke media_descriptor, 0, peek(buf, 0x15)
+		poke mediaDescriptor, 0, peek(buf, 0x15)
 		// unused
-		wpoke spt, 0, wpeek(buf, 0x18)
-		wpoke number_of_heads, 0, wpeek(buf, 0x1A)
-		lpoke hidden_sectors, 0, lpeek(buf, 0x1C)
+		wpoke sectorPerTrack, 0, wpeek(buf, 0x18)
+		wpoke headNumber, 0, wpeek(buf, 0x1A)
+		lpoke hiddenSector, 0, lpeek(buf, 0x1C)
 		// unused
-		dim total_sectors, 2 : memcpy total_sectors, buf, 8, 0, 0x28
-		dim MFT_cluster_number, 2 : memcpy MFT_cluster_number, buf, 8, 0, 0x30
-		dim MFTMirr_cluster_number, 2 : memcpy MFTMirr_cluster_number, buf, 8, 0, 0x38
-		poke bpfrs, 0, peek(buf, 0x40)
+		dim totalSector, 2 : memcpy totalSector, buf, 8, 0, 0x28
+		dim MFTCluster, 2 : memcpy MFTCluster, buf, 8, 0, 0x30
+		dim MFTMirrCluster, 2 : memcpy MFTMirrCluster, buf, 8, 0, 0x38
+		poke clusterPerRecord, 0, peek(buf, 0x40)
 		// unused(?)
-		poke cpib, 0, peek(buf, 0x44)
+		poke clusterPerBlock, 0, peek(buf, 0x44)
 		// unused
-		dim volume_serial_number, 2 : memcpy volume_serial_number, buf, 8, 0, 0x48
-		lpoke checksum, 0, lpeek(buf, 0x50)
-		sdim bootstrap_code, 426 : memcpy bootstrap_code, buf, 426, 0, 0x54
-		wpoke eos_marker, 0, wpeek(buf, 0x01FE)
+		dim serialNumber, 2 : memcpy serialNumber, buf, 8, 0, 0x48
+		lpoke checkSum, 0, lpeek(buf, 0x50)
+		sdim bootCode, 426 : memcpy bootCode, buf, 426, 0, 0x54
+		wpoke endMarker, 0, wpeek(buf, 0x01FE)
 	return
 	// 構造体から取得
 	#modcfunc st_NTFSBootSector_GET str vname
 		ret = 0
 		switch(getpath(vname, 16))
-			case "jmp" : memcpy ret, jmp, 3, 0, 0 : swbreak
-			case "oem" : ret = varptr(oem) : swbreak										; 8b
-			case "bps" : wpoke ret, 0, bps : swbreak
-			case "spc" : poke ret, 0, spc : swbreak
-			case "reserved_sectors" : wpoke ret, 0, reserved_sectors : swbreak
-			case "media_descriptor" : poke ret, 0, media_descriptor : swbreak
-			case "spt" : wpoke buf, 0, spt : swbreak
-			case "number_of_heads" : wpoke buf, 0, number_of_heads : swbreak
-			case "hidden_sectors" : lpoke buf, 0, hidden_sectors : swbreak
-			case "total_sectors" : ret = varptr(total_sectors) : swbreak					; 8b
-			case "mft_cluster_number" : ret = varptr(MFT_cluster_number) : swbreak			; 8b
-			case "mftmirr_cluster_number" : ret = varptr(MFTMirr_cluster_number) : swbreak	; 8b
-			case "bpfrs" : poke ret, 0, bpfrs : swbreak
-			case "cpib" : poke ret, 0, cpib : swbreak
-			case "volume_serial_number" : ret = varptr(volume_serial_number) : swbreak		; 8b
-			case "checksum" : lpoke ret, 0, checksum : swbreak
-			case "bootstrap_code" : ret = varptr(bootstrap_code) : swbreak					; 426b
-			case "eos_marker" : wpoke ret, 0, eos_marker : swbreak
+			case "jump" : memcpy ret, jump, 3, 0, 0 : swbreak
+			case "oemid" : ret = varptr(oemID) : swbreak					; 8b
+			case "bytepersector" : wpoke ret, 0, bytePerSector : swbreak
+			case "sectorpercluster" : poke ret, 0, sectorPerCluster : swbreak
+			case "reserved" : wpoke ret, 0, reserved : swbreak
+			case "mediadescriptor" : poke ret, 0, mediaDescriptor : swbreak
+			case "sectorpertrack" : wpoke buf, 0, sectorPerTrack : swbreak
+			case "headnumber" : wpoke buf, 0, headNumber : swbreak
+			case "hiddensector" : lpoke buf, 0, hiddenSector : swbreak
+			case "totalsector" : ret = varptr(totalSector) : swbreak		; 8b
+			case "mftcluster" : ret = varptr(MFTCluster) : swbreak			; 8b
+			case "mftmirrcluster" : ret = varptr(MFTMirrCluster) : swbreak	; 8b
+			case "clusterperrecord" : poke ret, 0, clusterPerRecord : swbreak
+			case "clusterperblock" : poke ret, 0, clusterPerBlock : swbreak
+			case "serialnumber" : ret = varptr(serialNumber) : swbreak		; 8b
+			case "checksum" : lpoke ret, 0, checkSum : swbreak
+			case "bootcode" : ret = varptr(bootCode) : swbreak				; 426b
+			case "endmarker" : wpoke ret, 0, endMarker : swbreak
 		swend
 	return ret
 #global
@@ -64,45 +64,132 @@
 /*--------------------------------------------------
 	MFTレコード構造体
 --------------------------------------------------*/
-#module st_MFTRecord magic_number, offset_to_fixup_array, number_of_entries_in_fixup_array, LogFile_sequence_number,\
-	                 sequence_number, hard_link_count, offset_to_first_attribute, flags, used_size_of_MFT_entry,\
-	                 allocated_size_of_mft_entry, file_reference_to_base_record, next_addtibute_id, align_to_4b_boundary,\
-	                 number_of_this_MFT_record, attributes_and_fixup_value
+#module st_MFTRecord signature, updateOffset, updateNumber, logFile,\
+	                 sequenceNumber, hardLinkCount, attributeOffset, flag, usedSize,\
+	                 allocatedSize, baseRecord, nextAttributeID, MFTRecord
 	#modfunc st_MFTRecord_SET var buf
-		lpoke magic_number, 0, lpeek(buf, 0)
-		wpoke offset_to_fixup_array, 0, wpeek(buf, 4)
-		wpoke number_of_entries_in_fixup_array, 0, wpeek(buf, 6)
-		dim LogFile_sequence_number, 2 : memcpy LogFile_sequence_number, buf, 8, 0, 8
-		wpoke sequence_number, 0, wpeek(buf, 0x10)
-		wpoke hard_link_count, 0, wpeek(buf, 0x12)
-		wpoke offset_to_first_attribute, 0, wpeek(buf, 0x14)
-		wpoke flags, 0, wpeek(buf, 0x16)
-		lpoke used_size_of_MFT_entry, 0, lpeek(buf, 0x18)
-		lpoke allocated_size_of_mft_entry, 0, lpeek(buf, 0x1c)
-		dim file_reference_to_base_record, 2 : memcpy file_reference_to_base_record, buf, 8, 0, 0x20
-		wpoke next_addtibute_id, 0, wpeek(buf, 0x28)
-		wpoke align_to_4b_boundary, 0, wpeek(buf, 0x2a)
-		lpoke number_of_this_MFT_record, 0, lpeek(buf, 0x2c)
-		sdim attributes_and_fixup_value, 4048
-		memcpy attributes_and_fixup_value, buf, 4048, 0, 0x30
+		lpoke signature, 0, lpeek(buf, 0)
+		wpoke updateOffset, 0, wpeek(buf, 4)
+		wpoke updateNumber, 0, wpeek(buf, 6)
+		dim logFile, 2 : memcpy logFile, buf, 8, 0, 8
+		wpoke sequenceNumber, 0, wpeek(buf, 0x10)
+		wpoke hardLinkCount, 0, wpeek(buf, 0x12)
+		wpoke attributeOffset, 0, wpeek(buf, 0x14)
+		wpoke flag, 0, wpeek(buf, 0x16)
+		lpoke usedSize, 0, lpeek(buf, 0x18)
+		lpoke allocatedSize, 0, lpeek(buf, 0x1c)
+		dim baseRecord, 2 : memcpy baseRecord, buf, 8, 0, 0x20
+		wpoke nextAttributeID, 0, wpeek(buf, 0x28)
+		sdim MFTRecord, allocatedSize : memcpy MFTRecord, buf, allocatedSize, 0, 0	; whole data
 	return
 	#modcfunc st_MFTRecord_GET str vname
 		ret = 0
 		switch(getpath(vname, 16))
-			case "magic_number" : lpoke ret, 0, magic_number : swbreak
-			case "offset_to_fixup_array" : wpoke ret, 0, offset_to_fixup_array : swbreak
-			case "number_of_entries_in_fixup_array" : wpoke ret, 0, number_of_entries_in_fixup_array : swbreak
-			case "logfile_sequence_number" : ret = varptr(LogFile_sequence_number) : swbreak
-			case "sequence_number" : wpoke ret, 0, sequence_number : swbreak
-			case "hard_link_count" : wpoke ret, 0, hard_link_count : swbreak
-			case "offset_to_first_attribute" : wpoke ret, 0, offset_to_first_attribute : swbreak
-			case "flags" : wpoke ret, 0, flags : swbreak
-			case "used_size_of_mft_entry" : lpoke ret, 0, used_size_of_MFT_entry : swbreak
-			case "allocated_size_of_mft_entry" : lpoke ret, 0, allocated_size_of_mft_entry : swbreak
-			case "file_reference_to_base_record" : ret = varptr(file_reference_to_base_record) : swbreak
-			case "next_addtibute_id" : wpoke ret, 0, next_addtibute_id : swbreak
-			case "align_to_4b_boundary" : wpoke ret, 0, align_to_4b_boundary : swbreak
-			case "attributes_and_fixup_value" : ret = varptr(attributes_and_fixup_value) : swbreak
+			case "signature" : lpoke ret, 0, signature : swbreak
+			case "updateoffset" : wpoke ret, 0, updateOffset : swbreak
+			case "updatenumber" : wpoke ret, 0, updateNumber : swbreak
+			case "logfile" : ret = varptr(logFile) : swbreak				; 8b
+			case "sequencenumber" : wpoke ret, 0, sequenceNumber : swbreak
+			case "hardlinkcount" : wpoke ret, 0, hardLinkCount : swbreak
+			case "attributeoffset" : wpoke ret, 0, attributeOffset : swbreak
+			case "flag" : wpoke ret, 0, flag : swbreak
+			case "usedsize" : lpoke ret, 0, usedSize : swbreak
+			case "allocatedsize" : lpoke ret, 0, allocatedSize : swbreak
+			case "baserecord" : ret = varptr(baseRecord) : swbreak			; 8b
+			case "nextattributeid" : wpoke ret, 0, nextAttributeID : swbreak
+			case "mftrecord" : ret = varptr(MFTRecord) : swbreak			; 1024b
+		swend
+	return ret
+#global
+
+/*--------------------------------------------------
+	ノンレジデントアトリビュート構造体
+--------------------------------------------------*/
+#module st_AttributeNR typeID, len, formCode, nameLength, nameOffset,\
+	                         flag, attributeID, startVCN, endVCN, runListOffset,\
+	                         compressSize, contentDiskSize, contentSize, initialContentSize
+	#modfunc st_AttributeNR_SET var buf
+		lpoke typeID, 0, lpeek(buf, 0)
+		if ( typeID == 0xffffffff ) : return 1
+		lpoke len, 0, lpeek(buf, 4)
+		poke formCode, 0, peek(buf, 8)
+		poke nameLength, 0, peek(buf, 9)
+		wpoke nameOffset, 0, wpeek(buf, 0xA)
+		wpoke flag, 0, wpeek(buf, 0xC)
+		wpoke attributeID, 0, wpeek(buf, 0xE)
+		dim startVCN, 2 : memcpy startVCN, buf, 8, 0, 0x10
+		dim endVCN, 2 : memcpy endVCN, buf, 8, 0, 0x18
+		wpoke runListOffset, 0, wpeek(buf, 0x20)
+		wpoke compressSize, 0, wpeek(buf, 0x22)
+		dim contentDiskSize, 2 : memcpy contentDiskSize, buf, 8, 0, 0x28
+		dim contentSize, 2 : memcpy contentSize, buf, 8, 0, 0x30
+		dim initialContentSize, 2 : memcpy initialContentSize, buf, 8, 0, 0x38
+	return 1
+	#modcfunc st_AttributeNR_GET str vname
+		ret = 0
+		switch(getpath(vname, 16))
+			case "typeid" : lpoke ret, 0, typeID : swbreak
+			case "len" : lpoke ret, 0, len : swbreak
+			case "formcode" : poke ret, 0, formCode : swbreak
+			case "namelength" : poke ret, 0, nameLength : swbreak
+			case "nameoffset" : wpoke ret, 0, nameOffset : swbreak
+			case "flag" : wpoke ret, 0, flag : swbreak
+			case "attributeid" : wpoke ret, 0, attributeID : swbreak
+			case "startvcn" : ret = varptr(startVCN) : swbreak
+			case "endvcn" : ret = varptr(endVCN) : swbreak
+			case "runlistoffset" : wpoke ret, 0, runListOffset : swbreak
+			case "compresssize" : wpoke ret, 0, compressSize : swbreak
+			case "contentdisksize" : ret = varptr(contentDiskSize) : swbreak
+			case "contentsize" : ret = varptr(contentSize) : swbreak
+			case "initialcontentsize" : ret = varptr(initialContentSize) : swbreak
+		swend
+	return ret
+#global
+
+/*--------------------------------------------------
+	レジデントアトリビュート構造体
+--------------------------------------------------*/
+#module st_AttributeR typeID, len, formCode, nameLength, nameOffset,\
+	                         flag, attributeID, contentLength, contentOffset,\
+	                         indexedFlag, AttributeName, Attribute
+	#modfunc st_AttributeR_SET var buf
+		lpoke typeID, 0, lpeek(buf, 0)
+		if ( typeID == 0xffffffff ) : return 0
+		lpoke len, 0, lpeek(buf, 4)
+		poke formCode, 0, peek(buf, 8)
+		poke nameLength, 0, peek(buf, 9)
+		wpoke nameOffset, 0, wpeek(buf, 0xA)
+		wpoke flag, 0, wpeek(buf, 0xC)
+		wpoke attributeID, 0, wpeek(buf, 0xE)
+		lpoke contentLength, 0, lpeek(buf, 0x10)
+		wpoke contentOffset, 0, wpeek(buf, 0x14)
+		poke indexedFlag, 0, peek(buf, 0x16)
+		// Non-residentであれば構造体を変更する
+		if ( formCode == 1 ) {
+			delmod thismod
+			newmod thismod, st_AttributeNR
+			st_AttributeNR_SET thismod, buf
+			return 1
+		}
+		// データを取得
+		sdim AttributeName, 2*nameLength : memcpy Attribute, buf, 2*nameLength, 0, 0x18
+		sdim Attribute, contentLength : memcpy Attribute, buf, contentLength, 0, 0x18 + 2*nameLength
+	return 0
+	#modcfunc st_AttributeR_GET str vname
+		ret = 0
+		switch(getpath(vname, 16))
+			case "typeid" : lpoke ret, 0, typeID : swbreak
+			case "len" : lpoke ret, 0, len : swbreak
+			case "formcode" : poke ret, 0, formCode : swbreak
+			case "namelength" : poke ret, 0, nameLength : swbreak
+			case "nameoffset" : wpoke ret, 0, nameOffset : swbreak
+			case "flag" : wpoke ret, 0, flag : swbreak
+			case "attributeid" : wpoke ret, 0, attributeID : swbreak
+			case "contentlength" : lpoke ret, 0, contentLength : swbreak
+			case "contentoffset" : wpoke ret, 0, contentOffset : swbreak
+			case "indexedflag" : poke ret, 0, indexedFlag : swbreak
+			case "attributename" : ret = varptr(AttributeName) : swbreak
+			case "attribute" : ret = varptr(Attribute) : swbreak
 		swend
 	return ret
 #global
@@ -113,12 +200,52 @@
 #module "NTFS_Parser"
 	#uselib "kernel32.dll"
 		#func JumpTo "SetFilePointer" int, sptr, int, int
+		#cfunc ReadFile "ReadFile" int, int, int, int, int
+		#cfunc GetLastError "GetLastError"
 	// ReadFile
 	#const FILE_BEGIN 0
 	#const FILE_CURRENT 1
 	// misc
 	#const INVALID_HANDLE_VALUE -1
 	#const NULL 0
+	
+	/*--------------------------------------------------
+	// FindAttribute : アトリビュート情報を取得
+	//    p1 : 構造体を格納する変数
+	//    p2 : MFTレコード情報(st_MFTRecord構造体)
+	//    p3 : 取得するアトリビュートのタイプ(数値)
+	--------------------------------------------------*/
+	#deffunc FindAttribute var stAttr, var stMFT, int chk_typeID
+		// 最初のアトリビュートから次のアトリビュートまでのオフセット
+		nextAttrOffset = 0
+		// MFT内のアトリビュート全体サイズはallocatedSize - attributeOffset
+		attrSize = st_MFTRecord_GET(stMFT, "allocatedSize") - st_MFTRecord_GET(stMFT, "attributeOffset")
+		repeat
+			if ( nextAttrOffset >= attrSize ) : break
+			// MFTRecordのポインタのattributeOffsetバイト先からコピー
+			sdim attrR, attrSize
+			dupptr attrR, st_MFTRecord_GET(stMFT, "MFTRecord") + st_MFTRecord_GET(stMFT, "attributeOffset") + nextAttrOffset, attrSize - nextAttrOffset, 2
+			// データを構造体とする
+			newmod stAttr, st_AttributeR
+			st_AttributeR_SET stAttr, AttrR
+			// Non-residentが取得された
+			if ( stat == 1 ) {
+				typeID = st_AttributeNR_GET(stAttr, "typeID")
+				len = st_AttributeNR_GET(stAttr, "len")
+				nr = st_AttributeNR_GET(stAttr, "formCode")
+			} else {	// Residentが取得された
+				typeID = st_AttributeR_GET(stAttr, "typeID")
+				len = st_AttributeR_GET(stAttr, "len")
+				nr = st_AttributeNR_GET(stAttr, "formCode")
+			}
+			// アトリビュートが存在しない
+			if ( typeID == 0xffffffff ) : break
+			if ( typeID == chk_typeID ) : return nr
+			// 次のアトリビュートへ
+			nextAttrOffset += len
+			delmod stAttr
+		loop
+	return -1
 	
 	/*--------------------------------------------------
 	// GetMFTRecord : MFTレコード情報を取得
@@ -137,12 +264,12 @@
 			JumpTo _hDevice, addr_l, addr_u, FILE_CURRENT
 		loop
 		// 読み込み
-		sdim MFT, 0x1000
-		if ( ReadDevice(_hDevice, MFT, 0x1000 / GetSectorSize(), 0) == -1 ) : return -1
+		sdim MFT, 0x400
+		if ( ReadDevice(_hDevice, MFT, 0x400 / GetSectorSize(), 0) == -1 ) : return -1
 		// データを構造体とする
 		newmod stMFT, st_MFTRecord
 		st_MFTRecord_SET stMFT, MFT
-		//
+		// ポインタはMTF Record Headerで保持
 	return 0
 	
 	/*--------------------------------------------------
@@ -161,8 +288,8 @@
 		newmod stNBS, st_NTFSBootSector
 		st_NTFSBootSector_SET stNBS, NBS
 		// セクタサイズとクラスタサイズを設定
-		UpdateSectorSize st_NTFSBootSector_GET(stNBS, "bps")
-		UpdateClusterSize st_NTFSBootSector_GET(stNBS, "spc")
+		UpdateSectorSize st_NTFSBootSector_GET(stNBS, "bytePerSector")
+		UpdateClusterSize st_NTFSBootSector_GET(stNBS, "sectorPerCluster")
 		// ポインタはNTFSで保持
 	return 0
 #global

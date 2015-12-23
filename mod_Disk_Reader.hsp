@@ -100,8 +100,7 @@
 		loop
 		// バイナリを読み込む
 		if ( ReadFile(_hDevice, varptr(buf), numberSector * GetSectorSize(), varptr(readByte), NULL) == 0 ) : return -1
-		// 1セクタ戻す
-		JumpTo _hDevice, -GetSectorSize(), NULL, FILE_CURRENT
+		JumpTo _hDevice, -readByte, NULL, FILE_CURRENT
 	return 0
 	
 	/*--------------------------------------------------
