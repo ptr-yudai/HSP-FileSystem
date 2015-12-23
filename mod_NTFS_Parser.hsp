@@ -198,7 +198,7 @@
 			return 1
 		}
 		// データを取得
-		sdim AttributeName, 2*nameLength : memcpy Attribute, buf, 2*nameLength, 0, 0x18
+		sdim AttributeName, 2*nameLength : memcpy AttributeName, buf, 2*nameLength, 0, 0x18
 		sdim Attribute, contentLength : memcpy Attribute, buf, contentLength, 0, 0x18 + 2*nameLength
 	return 0
 	#modcfunc st_AttributeR_GET str vname
@@ -258,6 +258,16 @@
 	#const NULL 0
 	
 	/*--------------------------------------------------
+	// GetFileRecord : アトリビュート情報を取得
+	//    p1 : 構造体を格納する変数
+	//    p2 : MFTレコード情報(st_MFTRecord構造体)
+	//    p3 : 取得するアトリビュートのタイプ(数値)
+	--------------------------------------------------*/
+	;#deffunc GetFileRecord int _hDevice
+		
+	;return
+	
+	/*--------------------------------------------------
 	// ParseDataRuns : データリストを解析する
 	//    p1 : Data Runs構造体を格納する変数
 	//    p3 : $DATAを持つアトリビュート構造体
@@ -271,33 +281,42 @@
 	#deffunc ParseDataRuns var stDR, var stAttr
 		// non-residentであり、$DATAであるか
 		if ( st_AttributeR_GET(stAttr, "formCode") == 0 || st_AttributeNR_GET(stAttr, "typeID") != NTFS_DATA ) : return -1
+		ret = 0
+		
 		// 初期化
 		tmp_int = 0
 		lenLength = 0 : lenOffset = 0
 		drSize = st_AttributeNR_GET(stAttr, "len") - st_AttributeNR_GET(stAttr, "runlistoffset")
 		gotByte = 0		; すでに調査したバイト数
 		repeat
-			if ( drSize <= 0 ) : return -1	; broken
+			if ( drSize <= 0 ) : ret = -1 : break	; broken
+			
 			// 初期化
 			dim len, 4 : dim offset, 4
 			sdim DataRuns, drSize
+			
 			// Runlistsを取得
 			dupptr DataRuns, st_AttributeNR_GET(stAttr, "Attribute") + st_AttributeNR_GET(stAttr, "runlistoffset") + gotByte, drSize, 2 
+			
 			// lengthを取得
 			poke lenLength, 0, peek(DataRuns, 0) & 0xF	; lengthのlength
 			repeat lenLength : len |= peek(DataRuns, 1+cnt) << (cnt*8) : loop
+			
 			// offsetを取得
 			poke lenOffset, 0, peek(DataRuns, 0) >> 4	; offsetのlength
 			repeat lenOffset : offset |= peek(DataRuns, 1+lenLength+cnt) << (cnt*8) : loop
+			
 			// Data Runs構造体とする
 			newmod stDR, st_DataRuns, offset, len
+			
 			// 次のData Runへ
 			gotByte += 1 + lenLength + lenOffset
 			drSize -= gotByte
+			
 			// 終了チェック
 			if ( peek(DataRuns, 1+lenLength+lenOffset) == 0x00 ) : break
 		loop
-	return 0
+	return ret
 	
 	/*--------------------------------------------------
 	// FindAttribute : アトリビュート情報を取得
@@ -306,18 +325,23 @@
 	//    p3 : 取得するアトリビュートのタイプ(数値)
 	--------------------------------------------------*/
 	#deffunc FindAttribute var stAttr, var stMFT, int chk_typeID
-		// 最初のアトリビュートから次のアトリビュートまでのオフセット
-		nextAttrOffset = 0
+		nextAttrOffset = 0	; 最初のアトリビュートから次のアトリビュートまでのオフセット
+		ret = -1
+		
 		// MFT内のアトリビュート全体サイズはallocatedSize - attributeOffset
 		attrSize = st_MFTRecord_GET(stMFT, "allocatedSize") - st_MFTRecord_GET(stMFT, "attributeOffset")
+		
 		repeat
 			if ( nextAttrOffset >= attrSize ) : break
+			
 			// MFTRecordのポインタのattributeOffsetバイト先からコピー
 			sdim attrR, attrSize
 			dupptr attrR, st_MFTRecord_GET(stMFT, "MFTRecord") + st_MFTRecord_GET(stMFT, "attributeOffset") + nextAttrOffset, attrSize - nextAttrOffset, 2
+			
 			// データを構造体とする
 			newmod stAttr, st_AttributeR
 			st_AttributeR_SET stAttr, AttrR
+			
 			// Non-residentが取得された
 			if ( stat == 1 ) {
 				typeID = st_AttributeNR_GET(stAttr, "typeID")
@@ -328,38 +352,56 @@
 				len = st_AttributeR_GET(stAttr, "len")
 				nr = st_AttributeNR_GET(stAttr, "formCode")
 			}
+			
 			// アトリビュートが存在しない
 			if ( typeID == 0xffffffff ) : break
-			if ( typeID == chk_typeID ) : bsave "attr", attrr : return nr
+			
+			// 指定の属性IDを発見
+			if ( typeID == chk_typeID ) : ret = nr : break
+			
 			// 次のアトリビュートへ
 			nextAttrOffset += len
 			delmod stAttr
 		loop
-	return -1
+	return ret
 	
 	/*--------------------------------------------------
 	// GetMFTRecord : MFTレコード情報を取得
 	//    p1 : デバイスのハンドル
 	//    p2 : 格納先の変数
-	//    p3 : MFT Cluster Numberを保持するポインタ
+	//    p3 : 前のポインタからのセクタ数を保持するポインタ
+	//         (MFT Cluster Numberを保持するポインタ)
+	//    p4 : 最初のMFTであるか(単位をクラスタにするか)
 	--------------------------------------------------*/
-	#deffunc GetMFTRecord int _hDevice, var stMFT, int p_mft_cluster_number
+	#deffunc GetMFTRecord int _hDevice, var stMFT, int p_mft_cluster_number, int isFirst
 		// ポインタはNTFS Boot Sectorで保持
+		
 		// MFTへのクラスタを取得
-		addr_u = 0 : addr_l = 0
 		dupptr addr_l, p_mft_cluster_number, 4, 4
 		dupptr addr_u, p_mft_cluster_number + 4, 4, 4
+		
+		// 単位を設定
+		if ( isFirst == 1 ) {
+			clusterSize = GetClusterSize()
+		} else {
+			clusterSize = 1
+		}
+		
 		// ポインタを設定
-		repeat GetClusterSize() * GetSectorSize()
+		repeat clusterSize * GetSectorSize()
 			JumpTo _hDevice, addr_l, addr_u, FILE_CURRENT
 		loop
+		;mes strf("@@%x", stat)
+		
 		// 読み込み
 		sdim MFT, 0x400
 		if ( ReadDevice(_hDevice, MFT, 0x400 / GetSectorSize(), 0) == -1 ) : return -1
+		
 		// データを構造体とする
 		newmod stMFT, st_MFTRecord
 		st_MFTRecord_SET stMFT, MFT
-		// ポインタはMTF Record Headerで保持
+		
+		// ポインタは保持
 	return 0
 	
 	/*--------------------------------------------------
@@ -371,15 +413,19 @@
 	#deffunc GetNTFSBootSector int _hDevice, var stNBS, int relative_sectors
 		// ポインタを0にセット
 		JumpTo _hDevice, 0, NULL, FILE_BEGIN
+		
 		// ブートセクタから0x200バイト取得
 		sdim NBS, 0x200
 		if ( ReadDevice(_hDevice, NBS, 0x200 / GetSectorSize(), relative_sectors) == -1 ) : return -1
+		
 		// データを構造体とする
 		newmod stNBS, st_NTFSBootSector
 		st_NTFSBootSector_SET stNBS, NBS
+		
 		// セクタサイズとクラスタサイズを設定
 		UpdateSectorSize st_NTFSBootSector_GET(stNBS, "bytePerSector")
 		UpdateClusterSize st_NTFSBootSector_GET(stNBS, "sectorPerCluster")
+		
 		// ポインタはNTFSで保持
 	return 0
 #global
