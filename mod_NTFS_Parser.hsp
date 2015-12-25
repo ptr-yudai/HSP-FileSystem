@@ -104,7 +104,15 @@
 		dim baseRecord, 2 : memcpy baseRecord, buf, 8, 0, 0x20
 		wpoke nextAttributeID, 0, wpeek(buf, 0x28)
 		sdim MFTRecord, allocatedSize : memcpy MFTRecord, buf, allocatedSize, 0, 0	; whole data
-	return
+		// アップデートシーケンスを修正
+		if ( allocatedSize >= GetSectorSize() ) {
+			wpoke cmpVal_1, 0, wpeek(buf, updateOffset)
+			wpoke cmpVal_2, 0, wpeek(buf, GetSectorSize()-2)
+			if ( cmpVal_1 != cmpVal_2 ) : return -1			; 破損
+			// 修正
+			wpoke MFTRecord, GetSectorSize()-2, wpeek(buf, updateOffset+2)
+		}
+	return 0
 	#modcfunc st_MFTRecord_GET str vname
 		ret = 0
 		switch(getpath(vname, 16))
@@ -258,16 +266,6 @@
 	#const NULL 0
 	
 	/*--------------------------------------------------
-	// GetFileRecord : アトリビュート情報を取得
-	//    p1 : 構造体を格納する変数
-	//    p2 : MFTレコード情報(st_MFTRecord構造体)
-	//    p3 : 取得するアトリビュートのタイプ(数値)
-	--------------------------------------------------*/
-	;#deffunc GetFileRecord int _hDevice
-		
-	;return
-	
-	/*--------------------------------------------------
 	// ParseDataRuns : データリストを解析する
 	//    p1 : Data Runs構造体を格納する変数
 	//    p3 : $DATAを持つアトリビュート構造体
@@ -296,19 +294,20 @@
 			sdim DataRuns, drSize
 			
 			// Runlistsを取得
-			dupptr DataRuns, st_AttributeNR_GET(stAttr, "Attribute") + st_AttributeNR_GET(stAttr, "runlistoffset") + gotByte, drSize, 2 
+			dupptr DataRuns, st_AttributeNR_GET(stAttr, "Attribute") + st_AttributeNR_GET(stAttr, "runlistoffset") + gotByte, drSize, 2
 			
 			// lengthを取得
 			poke lenLength, 0, peek(DataRuns, 0) & 0xF	; lengthのlength
+			if ( lenLength >= 4 ) : break
 			repeat lenLength : len |= peek(DataRuns, 1+cnt) << (cnt*8) : loop
 			
 			// offsetを取得
 			poke lenOffset, 0, peek(DataRuns, 0) >> 4	; offsetのlength
+			if ( lenOffset >= 4 ) : break
 			repeat lenOffset : offset |= peek(DataRuns, 1+lenLength+cnt) << (cnt*8) : loop
 			
 			// Data Runs構造体とする
 			newmod stDR, st_DataRuns, offset, len
-			
 			// 次のData Runへ
 			gotByte += 1 + lenLength + lenOffset
 			drSize -= gotByte
@@ -391,7 +390,7 @@
 		repeat clusterSize * GetSectorSize()
 			JumpTo _hDevice, addr_l, addr_u, FILE_CURRENT
 		loop
-		;mes strf("@@%x", stat)
+		;mes strf("%x", stat)
 		
 		// 読み込み
 		sdim MFT, 0x400
@@ -400,6 +399,7 @@
 		// データを構造体とする
 		newmod stMFT, st_MFTRecord
 		st_MFTRecord_SET stMFT, MFT
+		if ( stat == -1 ) : return -1
 		
 		// ポインタは保持
 	return 0

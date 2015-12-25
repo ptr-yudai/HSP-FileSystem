@@ -1,3 +1,6 @@
+// TODO
+// - もっとわかりやすく
+
 //////////////////
 // !管理者権限! //
 //////////////////
@@ -53,6 +56,7 @@
 --------------------------------------------------*/
 	isFirst = 1
 	nextSize = st_NTFSBootSector_GET(stNTFSBootSector, "mftcluster")
+	usualNextSize = nextSize
 	
 	count = 0
 *Explore
@@ -65,30 +69,56 @@
 		} else {
 			dim pNextSize, 2 : pNextSize(0) = nextSize
 			GetMFTRecord hDevice, stMFTRecord, varptr(pNextSize), isFirst
-			
 		}
-		if ( stat == -1 ) : FatalOutput "MFTレコードの読み込みに失敗しました。"
+		
+		if ( stat == -1 ) {
+			FatalOutput "MFTレコードの読み込みに失敗しました。"
+		}
 		
 		// シグネチャが"FILE"でない
 		if ( st_MFTRecord_GET(stMFTRecord, "signature") != 0x454c4946 ) {
-			FatalOutput "MFTデータが正しく読み込めていないか、破損しています。"
+			;FatalOutput "MFTデータが正しく読み込めていないか、破損しています。"
+			mes "MFTデータが正しく読み込めていないか、破損しています。"
+			count++
+			// モジュール変数削除
+			delmod stMFTRecord : sdim stMFTRecord
+			sdim stAttribute : sdim stDataRuns, 64, 1
+			if count >= 500 : mes "[STOP]" : stop
+			goto *Explore
 		}
 		
 		// ファイルレコードのフラグを表示
 		;mes strf("MFTRecord.flag => %d", st_MFTRecord_GET(stMFTRecord, "flag"))
+		
+		if ( st_MFTRecord_GET(stMFTRecord, "flag") == NTFS_FILE_NOT_IN_USE ) {
+			mes "次のファイルは削除されています："
+		}
 		
 	/*--------------------------------------------------
 		アトリビュートの検索
 	--------------------------------------------------*/
 		// DataRunsを取得する($DATA attribute)
 		FindAttribute stAttribute, stMFTRecord, NTFS_DATA
+		/*
 		if ( stat == 1 ) {
 			ParseDataRuns stDataRuns, stAttribute
-			if ( stat == -1 ) : FatalOutput "$DATAアトリビュートのData Runsが壊れています。"
+			if ( stat == -1 ) {
+				;FatalOutput "$DATAアトリビュートのData Runsが壊れています。"
+				mes "$DATAアトリビュートのData Runsが壊れています。"
+				count++
+				// モジュール変数削除
+				delmod stMFTRecord : sdim stMFTRecord
+				delmod stAttribute : sdim stAttribute
+				delmod stDataRuns : sdim stDataRuns
+				if count >= 500 : mes "[STOP]" : stop
+				goto *Explore
+			}
 		} else {
-			FatalOutput "$MFTに$DATAアトリビュートが存在しません。"
+			;FatalOutput "$DATAアトリビュートが存在しません。"
+			mes "No $DATA"
 		}
-		
+		*/
+	
 		// 表示
 		;mes "Runlists :"
 		;repeat st_DataRuns_GET(stDataRuns, "count")
@@ -99,8 +129,10 @@
 		// ファイル名を取得する($FILE_NAME)
 		delmod stAttribute : sdim stAttribute
 		FindAttribute stAttribute, stMFTRecord, NTFS_FILE_NAME
+		
 		if ( stat == -1 ) {
-			FatalOutput "$MFTに$FILE_NAMEアトリビュートが存在しません。"
+			;FatalOutput "$MFTに$FILE_NAMEアトリビュートが存在しません。"
+			mes "No $FILE_NAME"
 		} else {
 			sdim attr, st_AttributeR_GET(stAttribute, "len")
 			dupptr attr, st_AttributeR_GET(stAttribute, "attribute"), st_AttributeR_GET(stAttribute, "len"), 2
@@ -112,7 +144,7 @@
 		
 		// 次への用意
 		isFirst = 0
-		nextSize = st_MFTRecord_GET(stMFTRecord, "allocatedSize")
+		nextSize = st_MFTRecord_GET(stMFTRecord, "allocatedSize") / GetSectorSize()
 		
 		// モジュール変数削除
 		delmod stMFTRecord : sdim stMFTRecord
@@ -120,35 +152,7 @@
 		repeat st_DataRuns_GET(stDataRuns, "count") : delmod stDataRuns(cnt) : loop
 		
 	count++
-	if count == 20 : mes "[STOP]" : stop
+	if count >= 1500 : mes "[STOP]" : stop
 goto *Explore
-	
-	
-	/*
-	//
-	dim mftLen, 2 : mftLen(0) = st_MFTRecord_GET(stMFTRecord, "allocatedSize")
-	delmod stMFTRecord : sdim stMFTRecord
-	delmod stAttribute : sdim stAttribute
-	
-	clusterBK = GetClusterSize()
-	UpdateClusterSize 1
-	GetMFTRecord hDevice, stMFTRecord, varptr(mftLen)
-	UpdateClusterSize clusterBK
-	if ( stat == -1 ) : FatalOutput "MFTレコードの読み込みに失敗しました。"
-	// 特定の属性をMFT内から取得
-	FindAttribute stAttribute, stMFTRecord, NTFS_DATA
-	if ( stat == 1 ) {
-		mes "pon!"
-		ParseDataRuns stDataRuns, stAttribute
-		if ( stat == -1 ) : FatalOutput "$DATAアトリビュートのData Runsが壊れています。"
-	} else {
-		FatalOutput "先頭の$MFTに$DATAアトリビュートが存在しません。"
-	}
-	// 表示
-	mes "Runlists :"
-	repeat st_DataRuns_GET(stDataRuns, "count")
-		mes strf("\t0x%x\t\t0x%x", st_DataRuns_GET(stDataRuns(cnt), "offset"), st_DataRuns_GET(stDataRuns(cnt), "len"))
-	loop
-	*/
 	
 stop
