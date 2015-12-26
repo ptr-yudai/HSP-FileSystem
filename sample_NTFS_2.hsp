@@ -1,0 +1,168 @@
+// TODO
+// - もっとわかりやすく
+
+#packopt name "sample_NTFS_2"
+//////////////////
+// !管理者権限! //
+//////////////////
+#runtime "hsp3cl"
+#include "mod_Disk_Reader.hsp"
+#include "mod_NTFS_Parser.hsp"
+#cmpopt varinit 1
+	
+/*--------------------------------------------------
+	変数初期化
+--------------------------------------------------*/
+	hDevice = 0					; デバイスハンドル
+	sdim oemID, 8				; OEM(ntfs:"NTFS    ")
+	sdim stPartitionTable		; パーティションテーブル構造体
+	sdim stNTFSBootSector		; NTFSブートセクタ構造体
+	sdim stMFTRecord			; MFTレコード構造体
+	sdim stAttribute			; アトリビュート構造体
+	sdim stDataRuns				; Runlists構造体
+	
+	// デバイスを開く
+	hDevice = OpenDevice("C:")
+	if ( hDevice == -1 ) : FatalOutput "デバイスのオープンに失敗しました。"
+	
+/*--------------------------------------------------
+	パーティションブートセクタ読み込み
+--------------------------------------------------*/
+	// NTFSブートセクタ
+	GetNTFSBootSector hDevice, stNTFSBootSector, 0
+	if ( stat == -1 ) : FatalOutput "NTFSブートセクタの読み込みに失敗しました。"
+	
+	// OEM IDが"NTFS    "でない
+	dupptr oemID, st_NTFSBootSector_GET(stNTFSBootSector, "oemID"), 8, vartype("str")
+	if ( oemID != "NTFS    " ) : FatalOutput "ファイルシステムがNTFSではありません。"
+	mes strf("NTFSBootSector.oemID => %s", oemID)
+	
+/*--------------------------------------------------
+	探索開始
+--------------------------------------------------*/
+	isFirst = 1
+	nextSize = st_NTFSBootSector_GET(stNTFSBootSector, "mftcluster")
+	usualNextSize = nextSize
+	count = 0
+	
+	mes "id\ttype\tflag\tfilename\n"
+	
+	repeat 5000
+	/*--------------------------------------------------
+		ファイルレコード読み込み
+	--------------------------------------------------*/
+		// MFTレコード
+		if ( isFirst == 1 ) {
+			GetMFTRecord hDevice, stMFTRecord, nextSize, isFirst
+		} else {
+			dim pNextSize, 2 : pNextSize(0) = nextSize
+			GetMFTRecord hDevice, stMFTRecord, varptr(pNextSize), isFirst
+		}
+		if ( stat == -1 ) {
+			FatalOutput "MFTレコードの読み込みに失敗しました。"
+		}
+		
+		// シグネチャが"FILE"でない
+		if ( st_MFTRecord_GET(stMFTRecord, "signature") != 0x454c4946 ) {
+			;FatalOutput "MFTデータが正しく読み込めていないか、破損しています。"
+			mes "MFTデータが正しく読み込めていないか、破損しています。"
+			// モジュール変数削除
+			delmod stMFTRecord : sdim stMFTRecord
+			sdim stAttribute : sdim stDataRuns, 64, 1
+			continue
+		}
+		
+		// ファイルレコードのフラグを設定
+		switch st_MFTRecord_GET(stMFTRecord, "flag")
+			case NTFS_FILE_NOT_IN_USE : flag = "x    " : swbreak
+			case NTFS_FILE_IN_USE : flag = "-    " : swbreak
+			case NTFS_DIRECTORY_NOT_IN_USE : flag = "x dir" : swbreak
+			case NTFS_DIRECTORY_IN_USE : flag = "- dir" : swbreak
+			default : flag = "?????" : swbreak
+		swend
+		
+	/*--------------------------------------------------
+		アトリビュートの検索
+	--------------------------------------------------*/
+		// DataRunsを取得する($DATA attribute)
+		FindAttribute stAttribute, stMFTRecord, NTFS_DATA
+		/*
+		if ( stat == 1 ) {
+			ParseDataRuns stDataRuns, stAttribute
+			if ( stat == -1 ) {
+				;FatalOutput "$DATAアトリビュートのData Runsが壊れています。"
+				mes "$DATAアトリビュートのData Runsが壊れています。"
+				count++
+				// モジュール変数削除
+				delmod stMFTRecord : sdim stMFTRecord
+				delmod stAttribute : sdim stAttribute
+				delmod stDataRuns : sdim stDataRuns
+				if count >= 500 : mes "[STOP]" : stop
+				goto *Explore
+			}
+		} else {
+			;FatalOutput "$DATAアトリビュートが存在しません。"
+			mes "No $DATA"
+		}
+		*/
+	
+		// 表示
+		;mes "Runlists :"
+		;repeat st_DataRuns_GET(stDataRuns, "count")
+		;	mes strf("\t0x%x\t\t0x%x", st_DataRuns_GET(stDataRuns(cnt), "offset"), st_DataRuns_GET(stDataRuns(cnt), "len"))
+		;loop
+		
+		// ファイル名を取得する($FILE_NAME)
+		delmod stAttribute : sdim stAttribute
+		FindAttribute stAttribute, stMFTRecord, NTFS_FILE_NAME
+		nextAttrOffset = stat
+		
+		if ( stat == -1 ) {
+			;FatalOutput "$MFTに$FILE_NAMEアトリビュートが存在しません。"
+			mes "$FILE_NAMEアトリビュートが存在しません。"
+		} else {
+			sdim attr, st_AttributeR_GET(stAttribute, "len")
+			dupptr attr, st_AttributeR_GET(stAttribute, "attribute"), st_AttributeR_GET(stAttribute, "len"), 2
+			
+			// 名前取得
+			nameLength = 2 * peek(attr, 88 - 0x18)
+			sdim name, nameLength
+			memcpy name, attr, nameLength, 0, 90 - 0x18/*sizeof(stAttribute)*/
+			
+			// 名前空間
+			fileType = 0
+			poke fileType, 0, peek(attr, 89 - 0x18)
+			
+			// DOS形式の場合は再検索
+			if ( int(fileType) == NTFS_FILE_NAME_DOS ) {
+				delmod stAttribute : sdim stAttribute
+				FindAttribute stAttribute, stMFTRecord, NTFS_FILE_NAME, nextAttrOffset
+				if ( stat == -1 ) {
+					mes strf("%d\tDOS\t%s\t%s", cnt, flag, cnvwtos(name))
+				} else {
+					// PosixおよびWin32形式のファイル名が見つかった
+					sdim attr, st_AttributeR_GET(stAttribute, "len")
+					dupptr attr, st_AttributeR_GET(stAttribute, "attribute"), st_AttributeR_GET(stAttribute, "len"), 2
+					nameLength = 2 * peek(attr, 88 - 0x18)
+					sdim name, nameLength
+					memcpy name, attr, nameLength, 0, 90 - 0x18/*sizeof(stAttribute)*/
+					mes strf("%d\tWIN\t%s\t%s", cnt, flag, cnvwtos(name))
+				}
+			} else {
+				mes strf("%d\tWIN\t%s\t%s", cnt, flag, cnvwtos(name))
+			}
+			
+		}
+		
+		// 次への用意
+		isFirst = 0
+		nextSize = st_MFTRecord_GET(stMFTRecord, "allocatedSize") / GetSectorSize()
+		
+		// モジュール変数削除
+		delmod stMFTRecord : sdim stMFTRecord
+		delmod stAttribute : sdim stAttribute
+		repeat st_DataRuns_GET(stDataRuns, "count") : delmod stDataRuns(cnt) : loop
+		
+	loop
+	
+stop

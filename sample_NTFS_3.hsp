@@ -1,6 +1,7 @@
 // TODO
-// - もっとわかりやすく
+// - なぜか最後まで取得できない
 
+#packopt name "sample_NTFS_3"
 //////////////////
 // !管理者権限! //
 //////////////////
@@ -8,7 +9,7 @@
 #include "mod_Disk_Reader.hsp"
 #include "mod_NTFS_Parser.hsp"
 #cmpopt varinit 1
-
+	
 /*--------------------------------------------------
 	変数初期化
 --------------------------------------------------*/
@@ -21,30 +22,14 @@
 	sdim stDataRuns				; Runlists構造体
 	
 	// デバイスを開く
-	hDevice = OpenDevice("PHYSICALDRIVE0")
+	hDevice = OpenDevice("C:")
 	if ( hDevice == -1 ) : FatalOutput "デバイスのオープンに失敗しました。"
 	
-/*--------------------------------------------------
-	パーティションテーブル読み込み
---------------------------------------------------*/
-	// パーティションテーブルを取得
-	repeat 4
-		// 情報を取得
-		GetPartitionTable hDevice, stPartitionTable, cnt
-		if ( stat == -1 ) : FatalOutput "パーティションテーブルの取得に失敗しました。"
-		
-		// システムがNTFSであれば探索終了
-		if ( st_PartitionTable_GET(stPartitionTable, "system_id") == 0x07 ) : break
-		
-		// 全てNTFSでないとき
-		if ( cnt == 3 ) : FatalOutput "ファイルシステムがNTFSではありません。"
-	loop
-		
 /*--------------------------------------------------
 	パーティションブートセクタ読み込み
 --------------------------------------------------*/
 	// NTFSブートセクタ
-	GetNTFSBootSector hDevice, stNTFSBootSector, st_PartitionTable_GET(stPartitionTable, "relative_sectors")
+	GetNTFSBootSector hDevice, stNTFSBootSector, 0
 	if ( stat == -1 ) : FatalOutput "NTFSブートセクタの読み込みに失敗しました。"
 	
 	// OEM IDが"NTFS    "でない
@@ -57,18 +42,24 @@
 --------------------------------------------------*/
 	isFirst = 1
 	nextSize = st_NTFSBootSector_GET(stNTFSBootSector, "mftcluster")
+	recordNumber = 1
 	usualNextSize = nextSize
 	count = 0
 	
 	mes "id\ttype\tflag\tfilename\n"
 	
-	repeat 50
+	repeat
+		if cnt >= recordNumber : break
 	/*--------------------------------------------------
 		ファイルレコード読み込み
 	--------------------------------------------------*/
 		// MFTレコード
 		if ( isFirst == 1 ) {
+			// $MFT
 			GetMFTRecord hDevice, stMFTRecord, nextSize, isFirst
+			FindAttribute stAttribute, stMFTRecord, NTFS_DATA
+			dupptr recordNumber_, st_AttributeNR_GET(stAttribute, "contentSize"), 4, 4
+			recordNumber = recordNumber_ / st_MFTRecord_GET(stMFTRecord, "allocatedSize")
 		} else {
 			dim pNextSize, 2 : pNextSize(0) = nextSize
 			GetMFTRecord hDevice, stMFTRecord, varptr(pNextSize), isFirst

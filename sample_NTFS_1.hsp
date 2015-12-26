@@ -1,6 +1,7 @@
 // TODO
 // - もっとわかりやすく
 
+#packopt name "sample_NTFS_1"
 //////////////////
 // !管理者権限! //
 //////////////////
@@ -21,14 +22,30 @@
 	sdim stDataRuns				; Runlists構造体
 	
 	// デバイスを開く
-	hDevice = OpenDevice("C:")
+	hDevice = OpenDevice("PHYSICALDRIVE0")
 	if ( hDevice == -1 ) : FatalOutput "デバイスのオープンに失敗しました。"
 	
+/*--------------------------------------------------
+	パーティションテーブル読み込み
+--------------------------------------------------*/
+	// パーティションテーブルを取得
+	repeat 4
+		// 情報を取得
+		GetPartitionTable hDevice, stPartitionTable, cnt
+		if ( stat == -1 ) : FatalOutput "パーティションテーブルの取得に失敗しました。"
+		
+		// システムがNTFSであれば探索終了
+		if ( st_PartitionTable_GET(stPartitionTable, "system_id") == 0x07 ) : break
+		
+		// 全てNTFSでないとき
+		if ( cnt == 3 ) : FatalOutput "ファイルシステムがNTFSではありません。"
+	loop
+		
 /*--------------------------------------------------
 	パーティションブートセクタ読み込み
 --------------------------------------------------*/
 	// NTFSブートセクタ
-	GetNTFSBootSector hDevice, stNTFSBootSector, 0
+	GetNTFSBootSector hDevice, stNTFSBootSector, st_PartitionTable_GET(stPartitionTable, "relative_sectors")
 	if ( stat == -1 ) : FatalOutput "NTFSブートセクタの読み込みに失敗しました。"
 	
 	// OEM IDが"NTFS    "でない
@@ -46,7 +63,7 @@
 	
 	mes "id\ttype\tflag\tfilename\n"
 	
-	repeat 5000
+	repeat 50
 	/*--------------------------------------------------
 		ファイルレコード読み込み
 	--------------------------------------------------*/
