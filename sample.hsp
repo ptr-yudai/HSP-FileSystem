@@ -90,8 +90,14 @@
 		// ファイルレコードのフラグを表示
 		;mes strf("MFTRecord.flag => %d", st_MFTRecord_GET(stMFTRecord, "flag"))
 		
-		if ( st_MFTRecord_GET(stMFTRecord, "flag") == NTFS_FILE_NOT_IN_USE ) {
-			mes "次のファイルは削除されています："
+		if ( st_MFTRecord_GET(stMFTRecord, "flag") == NTFS_FILE_NOT_IN_USE || st_MFTRecord_GET(stMFTRecord, "flag") == NTFS_DIRECTORY_NOT_IN_USE ) {
+			mes "次のレコードは削除されています："
+;			count++
+			// モジュール変数削除
+;			delmod stMFTRecord : sdim stMFTRecord
+;			sdim stAttribute : sdim stDataRuns, 64, 1
+;			if count >= 500 : mes "[STOP]" : stop
+;			goto *Explore
 		}
 		
 	/*--------------------------------------------------
@@ -129,6 +135,7 @@
 		// ファイル名を取得する($FILE_NAME)
 		delmod stAttribute : sdim stAttribute
 		FindAttribute stAttribute, stMFTRecord, NTFS_FILE_NAME
+		nextAttrOffset = stat
 		
 		if ( stat == -1 ) {
 			;FatalOutput "$MFTに$FILE_NAMEアトリビュートが存在しません。"
@@ -136,10 +143,33 @@
 		} else {
 			sdim attr, st_AttributeR_GET(stAttribute, "len")
 			dupptr attr, st_AttributeR_GET(stAttribute, "attribute"), st_AttributeR_GET(stAttribute, "len"), 2
+			bsave "attr", attr
+			// 名前取得
 			nameLength = 2 * peek(attr, 88 - 0x18)
 			sdim name, nameLength
 			memcpy name, attr, nameLength, 0, 90 - 0x18/*sizeof(stAttribute)*/
-			mes strf("[%d] %s", count, cnvwtos(name))
+			// 名前空間
+			poke fileType, 0, peek(attr, 89 - 0x18)
+			
+			// DOS形式の場合は再検索
+			if ( int(fileType) == NTFS_FILE_NAME_DOS ) {
+				delmod stAttribute : sdim stAttribute
+				FindAttribute stAttribute, stMFTRecord, NTFS_FILE_NAME, nextAttrOffset
+				if ( stat == -1 ) {
+					mes strf("[%d][DOS形式] %s", count, cnvwtos(name))
+				} else {
+					// PosixおよびWin32形式のファイル名が見つかった
+					sdim attr, st_AttributeR_GET(stAttribute, "len")
+					dupptr attr, st_AttributeR_GET(stAttribute, "attribute"), st_AttributeR_GET(stAttribute, "len"), 2
+					nameLength = 2 * peek(attr, 88 - 0x18)
+					sdim name, nameLength
+					memcpy name, attr, nameLength, 0, 90 - 0x18/*sizeof(stAttribute)*/
+					mes strf("[%d] %s", count, cnvwtos(name))
+				}
+			} else {
+				mes strf("[%d] %s", count, cnvwtos(name))
+			}
+			
 		}
 		
 		// 次への用意
@@ -152,7 +182,7 @@
 		repeat st_DataRuns_GET(stDataRuns, "count") : delmod stDataRuns(cnt) : loop
 		
 	count++
-	if count >= 1500 : mes "[STOP]" : stop
+	if count >= 100 : mes "[STOP]" : stop
 goto *Explore
 	
 stop

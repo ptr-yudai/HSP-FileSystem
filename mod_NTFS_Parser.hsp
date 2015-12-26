@@ -24,6 +24,11 @@
 #const global NTFS_EA_INFORMATION		0xD0
 #const global NTFS_EA					0xE0
 #const global NTFS_LOGGED_UTILITY_STREAM	0x100
+// $FILE_NAME Name Space
+#const global NTFS_FILE_NAME_POSIX		0
+#const global NTFS_FILE_NAME_WIN32		1
+#const global NTFS_FILE_NAME_DOS		2
+#const global NTFS_FILE_NAME_WIN32_DOS	3
 
 /*--------------------------------------------------
 	NTFSブートセクタ構造体
@@ -323,8 +328,9 @@
 	//    p2 : MFTレコード情報(st_MFTRecord構造体)
 	//    p3 : 取得するアトリビュートのタイプ(数値)
 	--------------------------------------------------*/
-	#deffunc FindAttribute var stAttr, var stMFT, int chk_typeID
-		nextAttrOffset = 0	; 最初のアトリビュートから次のアトリビュートまでのオフセット
+	#define global FindAttribute(%1, %2, %3, %4=0) _FindAttribute_ %1, %2, %3, %4
+	#deffunc _FindAttribute_ var stAttr, var stMFT, int chk_typeID, int nextAttrOffset_
+		nextAttrOffset = nextAttrOffset_	; 最初のアトリビュートから次のアトリビュートまでのオフセット
 		ret = -1
 		
 		// MFT内のアトリビュート全体サイズはallocatedSize - attributeOffset
@@ -352,14 +358,15 @@
 				nr = st_AttributeNR_GET(stAttr, "formCode")
 			}
 			
+			// 次のアトリビュートへ
+			nextAttrOffset += len
+			
 			// アトリビュートが存在しない
 			if ( typeID == 0xffffffff ) : break
 			
 			// 指定の属性IDを発見
-			if ( typeID == chk_typeID ) : ret = nr : break
+			if ( typeID == chk_typeID ) : ret = nextAttrOffset : break
 			
-			// 次のアトリビュートへ
-			nextAttrOffset += len
 			delmod stAttr
 		loop
 	return ret
