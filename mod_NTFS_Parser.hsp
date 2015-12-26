@@ -73,9 +73,9 @@
 			case "sectorpercluster" : poke ret, 0, sectorPerCluster : swbreak
 			case "reserved" : wpoke ret, 0, reserved : swbreak
 			case "mediadescriptor" : poke ret, 0, mediaDescriptor : swbreak
-			case "sectorpertrack" : wpoke buf, 0, sectorPerTrack : swbreak
-			case "headnumber" : wpoke buf, 0, headNumber : swbreak
-			case "hiddensector" : lpoke buf, 0, hiddenSector : swbreak
+			case "sectorpertrack" : wpoke ret, 0, sectorPerTrack : swbreak
+			case "headnumber" : wpoke ret, 0, headNumber : swbreak
+			case "hiddensector" : lpoke ret, 0, hiddenSector : swbreak
 			case "totalsector" : ret = varptr(totalSector) : swbreak		; 8b
 			case "mftcluster" : ret = varptr(MFTCluster) : swbreak			; 8b
 			case "mftmirrcluster" : ret = varptr(MFTMirrCluster) : swbreak	; 8b
@@ -111,6 +111,7 @@
 		sdim MFTRecord, allocatedSize : memcpy MFTRecord, buf, allocatedSize, 0, 0	; whole data
 		// アップデートシーケンスを修正
 		if ( allocatedSize >= GetSectorSize() ) {
+			cmpVal_1 = 0 : cmpVal_2 = 0
 			wpoke cmpVal_1, 0, wpeek(buf, updateOffset)
 			wpoke cmpVal_2, 0, wpeek(buf, GetSectorSize()-2)
 			if ( cmpVal_1 != cmpVal_2 ) : return -1			; 破損
@@ -395,8 +396,15 @@
 		
 		// ポインタを設定
 		repeat clusterSize * GetSectorSize()
-			JumpTo _hDevice, addr_l, addr_u, FILE_CURRENT
+			JumpTo _hDevice, addr_l, varptr(addr_u), FILE_CURRENT
 		loop
+		if ( stat == -1 ) {
+			// 失敗したら強制
+			repeat addr_l
+				JumpTo _hDevice, clusterSize * GetSectorSize(), NULL, FILE_CURRENT
+			loop
+			if ( stat == -1 ) : return -1
+		}
 		;mes strf("%x", stat)
 		
 		// 読み込み

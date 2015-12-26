@@ -43,6 +43,7 @@
 	// CreateFile
 	#const GENERIC_READ 0x80000000
 	#const FILE_SHARE_READ 1
+	#const FILE_SHARE_WRITE 2
 	#const OPEN_EXISTING 3
 	// ReadFile
 	#const FILE_BEGIN 0
@@ -80,7 +81,7 @@
 	#defcfunc OpenDevice str _drivename
 		_devicename = "\\\\.\\" + _drivename
 		hDevice = 0
-		hDevice = CreateFile(varptr(_devicename), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL)
+		hDevice = CreateFile(varptr(_devicename), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL)
 		UpdateSectorSize 512
 	return hDevice
 	
