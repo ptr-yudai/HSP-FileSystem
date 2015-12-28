@@ -292,9 +292,8 @@
 		lenLength = 0 : lenOffset = 0
 		drSize = st_AttributeNR_GET(stAttr, "len") - st_AttributeNR_GET(stAttr, "runlistoffset")
 		gotByte = 0		; すでに調査したバイト数
+		
 		repeat
-			if ( drSize <= 0 ) : ret = -1 : break	; broken
-			
 			// 初期化
 			dim len, 4 : dim offset, 4
 			sdim DataRuns, drSize
@@ -304,12 +303,12 @@
 			
 			// lengthを取得
 			poke lenLength, 0, peek(DataRuns, 0) & 0xF	; lengthのlength
-			if ( lenLength >= 4 ) : break
+			;if ( lenLength >= 4 ) : break
 			repeat lenLength : len |= peek(DataRuns, 1+cnt) << (cnt*8) : loop
 			
 			// offsetを取得
 			poke lenOffset, 0, peek(DataRuns, 0) >> 4	; offsetのlength
-			if ( lenOffset >= 4 ) : break
+			;if ( lenOffset >= 4 ) : break
 			repeat lenOffset : offset |= peek(DataRuns, 1+lenLength+cnt) << (cnt*8) : loop
 			
 			// Data Runs構造体とする
@@ -319,6 +318,7 @@
 			drSize -= gotByte
 			
 			// 終了チェック
+			if ( drSize < 0 ) : ret = -1 : break	; broken
 			if ( peek(DataRuns, 1+lenLength+lenOffset) == 0x00 ) : break
 		loop
 	return ret

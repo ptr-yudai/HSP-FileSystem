@@ -1,6 +1,7 @@
 // TODO
 // - なぜか最後まで取得できない
 
+;A741d1000
 #packopt name "sample_NTFS_3"
 //////////////////
 // !管理者権限! //
@@ -65,13 +66,16 @@
 			GetMFTRecord hDevice, stMFTRecord, varptr(pNextSize), isFirst
 		}
 		if ( stat == -1 ) {
-			FatalOutput "MFTレコードの読み込みに失敗しました。"
+			;FatalOutput "MFTレコードの読み込みに失敗しました。"
+			delmod stMFTRecord : sdim stMFTRecord
+			sdim stAttribute : sdim stDataRuns, 64, 1
+			continue
 		}
 		
 		// シグネチャが"FILE"でない
 		if ( st_MFTRecord_GET(stMFTRecord, "signature") != 0x454c4946 ) {
 			;FatalOutput "MFTデータが正しく読み込めていないか、破損しています。"
-			mes "MFTデータが正しく読み込めていないか、破損しています。"
+			;mes "MFTデータが正しく読み込めていないか、破損しています。"
 			// モジュール変数削除
 			delmod stMFTRecord : sdim stMFTRecord
 			sdim stAttribute : sdim stDataRuns, 64, 1
@@ -93,30 +97,23 @@
 		// DataRunsを取得する($DATA attribute)
 		FindAttribute stAttribute, stMFTRecord, NTFS_DATA
 		/*
-		if ( stat == 1 ) {
+		if ( stat == -1 ) {
+			;FatalOutput "$DATAアトリビュートが存在しません。"
+			mes "$DATAアトリビュートが存在しません。"
+		} else {
 			ParseDataRuns stDataRuns, stAttribute
 			if ( stat == -1 ) {
 				;FatalOutput "$DATAアトリビュートのData Runsが壊れています。"
 				mes "$DATAアトリビュートのData Runsが壊れています。"
-				count++
-				// モジュール変数削除
-				delmod stMFTRecord : sdim stMFTRecord
-				delmod stAttribute : sdim stAttribute
-				delmod stDataRuns : sdim stDataRuns
-				if count >= 500 : mes "[STOP]" : stop
-				goto *Explore
+			} else {
+				// 表示
+				mes "\tRunlists :"
+				repeat st_DataRuns_GET(stDataRuns, "count")
+					mes strf("\t\t0x%x\t\t0x%x", st_DataRuns_GET(stDataRuns(cnt), "offset"), st_DataRuns_GET(stDataRuns(cnt), "len"))
+				loop
 			}
-		} else {
-			;FatalOutput "$DATAアトリビュートが存在しません。"
-			mes "No $DATA"
 		}
 		*/
-	
-		// 表示
-		;mes "Runlists :"
-		;repeat st_DataRuns_GET(stDataRuns, "count")
-		;	mes strf("\t0x%x\t\t0x%x", st_DataRuns_GET(stDataRuns(cnt), "offset"), st_DataRuns_GET(stDataRuns(cnt), "len"))
-		;loop
 		
 		// ファイル名を取得する($FILE_NAME)
 		delmod stAttribute : sdim stAttribute
