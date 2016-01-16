@@ -315,7 +315,7 @@
 			newmod stDR, st_DataRuns, offset, len
 			// 次のData Runへ
 			gotByte += 1 + lenLength + lenOffset
-			drSize -= gotByte
+			drSize -= 1 + lenLength + lenOffset
 			
 			// 終了チェック
 			if ( drSize < 0 ) : ret = -1 : break	; broken
@@ -382,7 +382,6 @@
 	--------------------------------------------------*/
 	#deffunc GetMFTRecord int _hDevice, var stMFT, int p_mft_cluster_number, int isFirst
 		// ポインタはNTFS Boot Sectorで保持
-		
 		// MFTへのクラスタを取得
 		dupptr addr_l, p_mft_cluster_number, 4, 4
 		dupptr addr_u, p_mft_cluster_number + 4, 4, 4
@@ -393,7 +392,6 @@
 		} else {
 			clusterSize = 1
 		}
-		
 		// ポインタを設定
 		repeat clusterSize * GetSectorSize()
 			JumpTo _hDevice, addr_l, varptr(addr_u), FILE_CURRENT
@@ -403,13 +401,15 @@
 			repeat addr_l
 				JumpTo _hDevice, clusterSize * GetSectorSize(), NULL, FILE_CURRENT
 			loop
-			if ( stat == -1 ) : return -1
+			;if ( stat == -1 ) : return -1
 		}
 		;mes strf("%x", stat)
 		
 		// 読み込み
 		sdim MFT, 0x400
 		if ( ReadDevice(_hDevice, MFT, 0x400 / GetSectorSize(), 0) == -1 ) : return -1
+		
+		;bsave "mft", mft
 		
 		// データを構造体とする
 		newmod stMFT, st_MFTRecord

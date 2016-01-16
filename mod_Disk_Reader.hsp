@@ -40,6 +40,7 @@
 		#cfunc CreateFile "CreateFileA" int, int, int, int, int, int, int
 		#func JumpTo "SetFilePointer" int, sptr, int, int
 		#cfunc ReadFile "ReadFile" int, int, int, int, int
+		#cfunc GetLastError "GetLastError"
 	// CreateFile
 	#const GENERIC_READ 0x80000000
 	#const FILE_SHARE_READ 1
@@ -127,5 +128,22 @@
 		repeat
 			wait 1024
 		loop
+	return
+#global
+
+/*--------------------------------------------------
+// ユーティリティ
+--------------------------------------------------*/
+#module "Disk_Calc_Util"
+	#uselib "kernel32.dll"
+		#func VirtualProtect_ "VirtualProtect" var, int, int, int
+	#define xdim_(%1, %2) dim %1, %2 : VirtualProtect_ %1, %2*4, 0x40, 0
+	#deffunc mul64b array ret, int a, int b
+		dim ret, 2
+		xdim_ mul64b_mcode, 6
+		mul64b_mcode(0) = 0x8bec8b55, 0x6df70c45, 0x084d8b10, 0xc28b0189
+		mul64b_mcode(4) = 0x891ff8c1, 0xc35d0451
+		prm = varptr(ret), a, b
+		dummy = callfunc(prm, varptr(mul64b_mcode), 3)
 	return
 #global

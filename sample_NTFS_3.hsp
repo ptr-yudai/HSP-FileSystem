@@ -11,6 +11,9 @@
 #include "mod_NTFS_Parser.hsp"
 #cmpopt varinit 1
 	
+	#uselib "kernel32.dll"
+		#func JumpTo "SetFilePointer" int, sptr, int, int
+		
 /*--------------------------------------------------
 	変数初期化
 --------------------------------------------------*/
@@ -46,6 +49,8 @@
 	recordNumber = 1
 	usualNextSize = nextSize
 	count = 0
+	step = 0
+	fragmentationN = 0
 	
 	mes "id\ttype\tflag\tfilename\n"
 	
@@ -67,10 +72,26 @@
 		}
 		if ( stat == -1 ) {
 			;FatalOutput "MFTレコードの読み込みに失敗しました。"
+			mes "MFTレコードの読み込みに失敗しました。"
 			delmod stMFTRecord : sdim stMFTRecord
-			sdim stAttribute : sdim stDataRuns, 64, 1
+			sdim stAttribute; : sdim stDataRuns, 64, 1
+			count++
 			continue
 		}
+		
+		// [DEBUG]
+		/*
+		if ( count == 2 && fragmentationN == 0 ) {
+			delmod stMFTRecord : sdim stMFTRecord
+			sdim stAttribute
+			tmp_int = 118520
+			repeat tmp_int-1
+				JumpTo hDevice, 0x400, 0, 1
+			loop
+			count += tmp_int
+			continue
+		}
+		*/
 		
 		// シグネチャが"FILE"でない
 		if ( st_MFTRecord_GET(stMFTRecord, "signature") != 0x454c4946 ) {
@@ -78,7 +99,8 @@
 			;mes "MFTデータが正しく読み込めていないか、破損しています。"
 			// モジュール変数削除
 			delmod stMFTRecord : sdim stMFTRecord
-			sdim stAttribute : sdim stDataRuns, 64, 1
+			sdim stAttribute; : sdim stDataRuns, 64, 1
+			count++
 			continue
 		}
 		
@@ -94,26 +116,26 @@
 	/*--------------------------------------------------
 		アトリビュートの検索
 	--------------------------------------------------*/
-		// DataRunsを取得する($DATA attribute)
+		// 断片化の連続データ
 		FindAttribute stAttribute, stMFTRecord, NTFS_DATA
-		/*
-		if ( stat == -1 ) {
-			;FatalOutput "$DATAアトリビュートが存在しません。"
-			mes "$DATAアトリビュートが存在しません。"
-		} else {
-			ParseDataRuns stDataRuns, stAttribute
+		if isFirst {
 			if ( stat == -1 ) {
-				;FatalOutput "$DATAアトリビュートのData Runsが壊れています。"
-				mes "$DATAアトリビュートのData Runsが壊れています。"
+				FatalOutput "$DATAアトリビュートが存在しません。"
+				;mes "$DATAアトリビュートが存在しません。"
 			} else {
-				// 表示
-				mes "\tRunlists :"
-				repeat st_DataRuns_GET(stDataRuns, "count")
-					mes strf("\t\t0x%x\t\t0x%x", st_DataRuns_GET(stDataRuns(cnt), "offset"), st_DataRuns_GET(stDataRuns(cnt), "len"))
-				loop
+				ParseDataRuns stDataRuns, stAttribute
+				if ( stat == -1 ) {
+					;FatalOutput "$DATAアトリビュートのData Runsが壊れています。"
+					mes "$DATAアトリビュートのData Runsが壊れています。"
+				} else {
+					// 表示
+					mes "\tRunlists :"
+					repeat st_DataRuns_GET(stDataRuns, "count")
+						mes strf("\t\t0x%x\t\t0x%x", st_DataRuns_GET(stDataRuns(cnt), "offset"), st_DataRuns_GET(stDataRuns(cnt), "len"))
+					loop
+				}
 			}
 		}
-		*/
 		
 		// ファイル名を取得する($FILE_NAME)
 		delmod stAttribute : sdim stAttribute
@@ -149,10 +171,10 @@
 					nameLength = 2 * peek(attr, 88 - 0x18)
 					sdim name, nameLength
 					memcpy name, attr, nameLength, 0, 90 - 0x18/*sizeof(stAttribute)*/
-					mes strf("%d\tWIN\t%s\t%s", cnt, flag, cnvwtos(name))
+					mes strf("%d\t%d\tWIN\t%s\t%s", cnt, count, flag, cnvwtos(name))
 				}
 			} else {
-				mes strf("%d\tWIN\t%s\t%s", cnt, flag, cnvwtos(name))
+				mes strf("%d\t%d\tWIN\t%s\t%s", cnt, count, flag, cnvwtos(name))
 			}
 			
 		}
@@ -160,12 +182,30 @@
 		// 次への用意
 		isFirst = 0
 		nextSize = st_MFTRecord_GET(stMFTRecord, "allocatedSize") / GetSectorSize()
-		
+		count++
+			
 		// モジュール変数削除
 		delmod stMFTRecord : sdim stMFTRecord
 		delmod stAttribute : sdim stAttribute
-		repeat st_DataRuns_GET(stDataRuns, "count") : delmod stDataRuns(cnt) : loop
+		;repeat st_DataRuns_GET(stDataRuns, "count") : delmod stDataRuns(cnt) : loop
 		
+		// 断片化されたMFTの終了
+		dupptr len, st_DataRuns_GET(stDataRuns(fragmentationN), "len"), 4, 4
+		;dupptr offset, st_DataRuns_GET(stDataRuns(fragmentationN+1), "offset"), 4, 4
+		;mes strf("%x", offset)
+		if ( count >= len * GetClusterSize() / nextSize ) {
+			fragmentationN++
+			dupptr offset, st_DataRuns_GET(stDataRuns(fragmentationN), "offset"), 4, 4
+			JumpTo hDevice, -(count-1) * nextSize * GetSectorSize(), 0, 1
+			mes strf("FRAGMENTATION : 0x%x", stat)
+			
+			dim addr, 2
+			mul64b addr, offset, GetClusterSize() * GetSectorSize()
+			JumpTo hDevice, addr(0), varptr(addr(1)), 1
+			mes strf("FRAGMENTATION : 0x%x", stat)
+			
+			count = 0
+		}
 	loop
 	
 stop
