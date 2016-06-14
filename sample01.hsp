@@ -1,0 +1,51 @@
+/*--------------------
+	管理者権限必要
+--------------------*/
+// 初期設定
+#cmpopt varinit 1
+#runtime "hsp3cl"
+// モジュール読み込み
+#include "./fsParser/devBase.hsp"
+#include "./fsParser/FAT.hsp"
+
+
+/*--------------------------------------------------
+	初期化
+--------------------------------------------------*/
+	dim hDevice
+	sdim fat
+
+/*--------------------------------------------------
+	読み込み
+--------------------------------------------------*/
+	// ドライブを開く
+	hDevice = OpenDevice("\\\\.\\E:")
+	if (hDevice == -1) : fatal "[WARNING]デバイスのオープンに失敗しました。"
+	
+	// FAT_FSとして読み込む
+	newmod fat, FS_FAT, hDevice
+	
+	// 共通ヘッダー部を読み込み
+	FAT_LoadCommonHeader fat
+	if (stat == -1) : fatal "[WARNING]ヘッダーの読み込みに失敗しました。"
+	if (stat == -2) : fatal "[WARNING]ファイルシステムが破損しています。(FATで読み込み)"
+	FAT_ShowCommonHeader fat
+	
+	/*
+	// FATを読み込む
+	FAT_LoadFileAllocationTable fat
+	if (stat == -1) : fatal "[WARNING]FATの読み込みに失敗しました。"
+	if (stat == -12) : fatal "[WARNING]FAT12には対応していません。"
+	*/
+	
+	// ディレクトリ構造体を読み込む
+	FAT_LoadDirectoryStructure fat
+stop
+
+/*--------------------------------------------------
+	
+--------------------------------------------------*/
+#deffunc fatal str _msg
+	mes _msg
+	end
+return

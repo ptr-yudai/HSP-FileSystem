@@ -1,0 +1,218 @@
+/*--------------------------------------------------
+[命名規則]
+メソッド		: FAT_関数名
+API				: FS_FAT_関数名
+引数			: _変数名
+ローカル変数	: t_変数名
+その他名前 : http://elm-chan.org/docs/fat.html
+--------------------------------------------------*/
+#module FS_FAT hDevice,\
+               FAT_type, BPB_TotSec, BPB_FATSz,\
+               FatStartSector, FatSectors, RootDirStartSector, RootDirSectors, DataStartSector, DataSectors,\
+               BS_JmpBoot, BS_OEMName,\
+               BPB_BytsPerSec, BPB_SecPerClus, BPB_RsvdSecCnt, BPB_NumFATs, BPB_RootEntCnt, BPB_TotSec16, BPB_Media, BPB_FATSz16, BPB_SecPerTrk, BPB_NumHeads, BPB_HiddSec, BPB_TotSec32,\
+               BPB_FATSz32, BPB_ExtFlags, BPB_FSVer, BPB_RootClus, BPB_FSInfo, BPB_BkBootSec, BPB_Reserved,\
+               BS_DrvNum, BS_Reserved1, BS_BootSig, BS_VolID, BS_VolLab, BS_FileSysType, BS_BootCode, BS_BootCode32, BS_BootSign
+	/* API */
+	#uselib "kernel32.dll"
+		#func FS_FAT_ReadFile "ReadFile" int, var, int, var, int
+		#func FS_FAT_SetFilePointer "SetFilePointer" int, sptr, int, int
+	/* 定数 */
+	#const FS_FAT_FILE_BEGIN 0
+	#const FS_FAT_FILE_CURRENT 1
+	
+	/*--------------------------------------------------
+	// コンストラクタ
+	// @prm1 : デバイスのハンドル
+	--------------------------------------------------*/
+	#modinit int _hDevice
+		FAT_type = 16			// FAT12 / FAT16 / FAT32
+		hDevice = _hDevice		// デバイスハンドルを継承
+		BPB_BytsPerSec = 512	// セクターのサイズ[byte]
+	return
+	
+	/*--------------------------------------------------
+	// ReadDevice
+	// @prm1 : 読んだバイナリを格納する変数
+	// @prm2 : 読み込む相対セクタ番号
+	// @note : 読み込みが完了すると、ポインタは最後に読んだデータの後ろになります。
+	--------------------------------------------------*/
+	#modcfunc FAT_ReadDevice var _buffer, int _sector_size,\
+	                         local readBytes
+		readBytes = 0
+		if ( FS_FAT_ReadFile(hDevice, _buffer, _sector_size * BPB_BytsPerSec, readBytes, 0) == 0 ) : return -1
+	return readBytes
+	
+	/*--------------------------------------------------
+	// SetPointer
+	// @prm1 : 移動先ポインタ
+	--------------------------------------------------*/
+	#modfunc FAT_SetPointer int _address32, int _address64, int _mode
+		FS_FAT_SetFilePointer hDevice, _address32, _address64, _mode
+	return
+	
+	/*--------------------------------------------------
+	// LoadDirectoryStructure
+	--------------------------------------------------*/
+	#modfunc FAT_LoadDirectoryStructure local t_fat_directory, local ThisEntryVal,\
+	                                    local t_DIR_Name
+		sdim t_fat_directory, BPB_BytsPerSec
+		sdim ThisEntryVal, 32
+		sdim t_DIR_Name, 11
+		// DataStartSectorに移動
+		FAT_SetPointer thismod, 0, 0, FS_FAT_FILE_BEGIN
+		repeat DataStartSector
+			FAT_SetPointer thismod, BPB_BytsPerSec, 0, FS_FAT_FILE_CURRENT
+		loop
+		// 順番にファイルを調査する
+		repeat BPB_SecPerClus
+			// FATを読み込み
+			if ( FAT_ReadDevice(thismod, t_fat_directory, 1) == -1 ) : return -1
+			// 各ディレクトリエントリを見る
+			repeat BPB_BytsPerSec / 32
+				memcpy ThisEntryVal, t_fat_directory, 32, 0, cnt * 32
+				memcpy t_DIR_Name, ThisEntryVal, 11, 0, 0
+				mes t_DIR_Name
+			loop
+		loop
+	return
+	
+	/*--------------------------------------------------
+	// LoadFileAllocationTable
+	// @note : hDeviceのポインタが2セクタ目である必要があります。
+	--------------------------------------------------*/
+	#modfunc FAT_LoadFileAllocationTable local t_fat, local t_readsec, local t_entry_size, local ThisEntryVal
+		if (FAT_type == 12) : return -10
+		sdim t_fat, BPB_BytsPerSec
+		if ( FAT_type == 32 ) {
+			t_entry_size = 4
+		} else {
+			t_entry_size = 2
+		}
+		FAT_SetPointer thismod, 0, 0, FS_FAT_FILE_BEGIN
+		repeat FatStartSector
+			FAT_SetPointer thismod, BPB_BytsPerSec, 0, FS_FAT_FILE_CURRENT
+		loop
+		// 順番にFATを調査する
+		/*
+		repeat 1
+			// FATを読み込み
+			if ( FAT_ReadDevice(thismod, t_fat, 1) == -1 ) : return -1
+			bsave "hoge", t_fat
+			// 各FATエントリを見る
+			repeat BPB_BytsPerSec / t_entry_size
+				t_readsec = cnt * t_entry_size
+				// エントリを取り出す
+				memcpy ThisEntryVal, t_fat, t_entry_size, 0, t_readsec
+				ThisEntryVal &= 0x0FffFFff
+				
+			loop
+		loop
+		*/
+	return
+	
+	/*--------------------------------------------------
+	// LoadCommonHeader : 共通ヘッダを取得
+	// @note : hDeviceのポインタが0である必要があります。
+	--------------------------------------------------*/
+	#modfunc FAT_LoadCommonHeader local t_fat_header
+		sdim t_fat_header, 2 * BPB_BytsPerSec
+		// ヘッダを読み込み
+		if ( FAT_ReadDevice(thismod, t_fat_header, 2) == -1 ) : return -1
+		// 各種データを初期化
+		sdim BS_OEMName, 8
+		sdim BPB_Reserved, 12 : sdim BS_VolLab, 11 : sdim BS_FileSysType, 8 : sdim BS_BootCode32, 420
+		// 各種データを抽出
+		memcpy BS_JmpBoot, t_fat_header, 3, 0, 0
+		memcpy BS_OEMName, t_fat_header, 8, 0, 3
+		BPB_BytsPerSec = wpeek(t_fat_header, 11)
+		BPB_SecPerClus =  peek(t_fat_header, 13)
+		BPB_RsvdSecCnt = wpeek(t_fat_header, 14)
+		BPB_NumFATs    =  peek(t_fat_header, 16)
+		BPB_RootEntCnt = wpeek(t_fat_header, 17)
+		BPB_TotSec16   = wpeek(t_fat_header, 19)
+		BPB_Media      =  peek(t_fat_header, 21)
+		BPB_FATSz16    = wpeek(t_fat_header, 22)
+		BPB_SecPerTrk  = wpeek(t_fat_header, 24)
+		BPB_NumHeads   = wpeek(t_fat_header, 26)
+		BPB_HiddSec    = lpeek(t_fat_header, 28)
+		BPB_TotSec32   = lpeek(t_fat_header, 32)
+		// FATの種類を決定
+		if (BPB_FATSz16 == 0) : FAT_type = 32
+		
+		if (FAT_type == 32) {
+			// FAT32の36バイト目以降のヘッダ
+			BPB_FATSz32 = lpeek(t_fat_header, 36)
+			BPB_ExtFlags = wpeek(t_fat_header, 40)
+			BPB_FSVer = wpeek(t_fat_header, 42)
+			BPB_RootClus = lpeek(t_fat_header, 44)
+			BPB_FSInfo = wpeek(t_fat_header, 48)
+			BPB_BkBootSec = wpeek(t_fat_header, 50)
+			memcpy BPB_Reserved, t_fat_header, 12, 0, 52
+			BS_DrvNum = peek(t_fat_header, 64)
+			BS_Reserved1 = peek(t_fat_header, 65)
+			BS_BootSig = peek(t_fat_header, 66)
+			BS_VolID = lpeek(t_fat_header, 67)
+			memcpy BS_VolLab, t_fat_header, 11, 0, 71
+			memcpy BS_FileSysType, t_fat_header, 8, 0, 82
+			memcpy BS_BootCode32, t_fat_header, 420, 0, 90
+			BS_BootSign = wpeek(t_fat_header, 510)
+		} else {
+			// FAT12 / FAT16の36バイト目以降のヘッダ
+			BS_DrvNum = peek(t_fat_header, 36)
+			BS_Reserved1 = peek(t_fat_header, 37)
+			BS_BootSig = peek(t_fat_header, 38)
+			BS_VolID = lpeek(t_fat_header, 39)
+			memcpy BS_VolLab, t_fat_header, 11, 0, 43
+			memcpy BS_FileSysType, t_fat_header, 8, 0, 54
+			memcpy BS_BootCode, t_fat_header, 448, 0, 62
+			BS_BootSign = wpeek(t_fat_header, 510)
+		}
+		// シグネチャを確認
+		if (BS_BootSign != 0xAA55) : return -2
+		// 各種領域およびサイズを計算
+		BPB_FATSz = BPB_FATSz16 + BPB_FATSz32
+		BPB_TotSec = BPB_TotSec16 + BPB_TotSec32
+		FatStartSector = BPB_RsvdSecCnt
+		FatSectors = BPB_FATSz * BPB_NumFATs
+		RootDirStartSector = FatStartSector + FatSectors
+		RootDirSectors = (32 * BPB_RootEntCnt + BPB_BytsPerSec - 1) / BPB_BytsPerSec
+		DataStartSector = RootDirStartSector + RootDirSectors
+		DataSectors = BPB_TotSec - DataStartSector
+		// FATタイプの決定
+		if (DataSectors / BPB_SecPerClus <= 4085) : FAT_type = 12
+		if (DataSectors / BPB_SecPerClus >= 4086) : FAT_type = 16
+		if (DataSectors / BPB_SecPerClus >= 65526) : FAT_type = 32
+	return 1
+	
+	/*--------------------------------------------------
+	// FAT_ShowCommonHeader : 共通ヘッダを整形して表示
+	--------------------------------------------------*/
+	#modfunc FAT_ShowCommonHeader
+		// 各種データを抽出
+		mes "*****基本情報*****"
+		mes strf("[BS_JmpBoot]    \t0x%06x", BS_JmpBoot)
+		mes strf("[BS_OEMName]    \t%s", BS_OEMName)
+		mes strf("[BPB_BytsPerSec]\t%d", BPB_BytsPerSec)
+		mes strf("[BPB_SecPerClus]\t%d", BPB_SecPerClus)
+		mes strf("[BPB_RsvdSecCnt]\t%d", BPB_RsvdSecCnt)
+		mes strf("[BPB_NumFATs]   \t%d", BPB_NumFATs)
+		mes strf("[BPB_RootEntCnt]\t%d", BPB_RootEntCnt)
+		mes strf("[BPB_TotSec16]  \t%d", BPB_TotSec16)
+		mes strf("[BPB_Media]     \t%d", BPB_Media)
+		mes strf("[BPB_FATSz16]   \t%d", BPB_FATSz16)
+		mes strf("[BPB_SecPerTrk] \t%d", BPB_SecPerTrk)
+		mes strf("[BPB_NumHeads]  \t%d", BPB_NumHeads)
+		mes strf("[BPB_HiddSec]   \t%d", BPB_HiddSec)
+		mes strf("[BPB_TotSec32]  \t%d", BPB_TotSec32)
+		mes "*****領域情報*****"
+		mes strf("[BPB_TotSec]        \t0%d", BPB_TotSec)
+		mes strf("[BPB_FATSz]         \t%d", BPB_FATSz)
+		mes strf("[FatStartSector]    \t0x%08x", FatStartSector)
+		mes strf("[FatSectors]        \t0x%08x", FatSectors)
+		mes strf("[RootDirStartSector]\t0x%08x", RootDirStartSector)
+		mes strf("[RootDirSectors]    \t0x%08x", RootDirSectors)
+		mes strf("[DataStartSector]   \t0x%08x", DataStartSector)
+		mes strf("[DataSectors]       \t0x%08x", DataSectors)
+	return
+#global

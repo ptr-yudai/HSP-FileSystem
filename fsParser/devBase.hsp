@@ -1,0 +1,22 @@
+#module "FS_Analyse"
+	#uselib "kernel32.dll"
+		#cfunc FS_CreateFile "CreateFileA" str, int, int, int, int, int, int
+	/*
+		CONSTANT
+	*/
+	#const FILE_SHARE_READ 1
+	#const FILE_SHARE_WRITE 2
+	#const GENERIC_READ 0x80000000
+	#const OPEN_EXISTING 3
+	
+	/*--------------------------------------------------
+	// OpenDevice : デバイスをドライブ名から開く
+	// @prm1 : 物理デバイス名
+	// @ret : デバイスのハンドル
+	//
+	// [ex] hDevice = OpenDevice("\\\\.\\PHYSICALDRIVE0")
+	--------------------------------------------------*/
+	#defcfunc OpenDevice str _drivename
+	return FS_CreateFile(_drivename, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, OPEN_EXISTING, 0, 0)
+	
+#global
